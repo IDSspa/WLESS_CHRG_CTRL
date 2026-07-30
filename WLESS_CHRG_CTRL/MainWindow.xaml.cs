@@ -120,7 +120,7 @@ namespace WLESS_CHRG_CTRL
 
             // Carica e parsa le porte bannate
             var bannedPorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string bannedSetting = WLESS_CHRG_CTRL.Properties.Settings.Default.BannedPorts;
+            string bannedSetting = Properties.Settings.Default.BannedPorts;
 
             if (!string.IsNullOrWhiteSpace(bannedSetting))
             {
@@ -361,9 +361,9 @@ namespace WLESS_CHRG_CTRL
         {
             if (!isConnected)
             {
-                if (cbStationPort.SelectedItem == null || cbVehiclePort.SelectedItem == null)
+                if (cbStationPort.SelectedItem == null && cbVehiclePort.SelectedItem == null)
                 {
-                    MessageBox.Show("Seleziona entrambe le porte seriali!", "Errore",
+                    MessageBox.Show("Select at least one serial port!", "Error",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
@@ -373,36 +373,44 @@ namespace WLESS_CHRG_CTRL
 
                 if (stationPort == vehiclePort)
                 {
-                    MessageBox.Show("Le due porte seriali devono essere diverse!", "Errore",
+                    MessageBox.Show("The two serial ports must be different!", "Error",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
                 try
                 {
-                    spStation.PortName = stationPort;
-                    spStation.Open();
+                    string stationConnected = "None";
+                    string vehicleConnected = "None";
 
-                    spVehicle.PortName = vehiclePort;
-                    spVehicle.Open();
+                    if (cbStationPort.SelectedItem != null && !string.IsNullOrWhiteSpace(cbStationPort.SelectedItem.ToString()))
+                    {
+                        stationConnected = spStation.PortName = stationPort;
+                        spStation.Open();
+
+                        ledStation.Fill = Brushes.LimeGreen;
+                        cbStationPort.IsEnabled = false;
+                        AppendMessage(stationMessages, "[SYSTEM] Connected to " + stationPort, false);
+                    }
+
+                    if (cbVehiclePort.SelectedItem != null && !string.IsNullOrWhiteSpace(cbVehiclePort.SelectedItem.ToString()))
+                    {
+                        vehicleConnected = spVehicle.PortName = vehiclePort;
+                        spVehicle.Open();
+                        
+                        ledVehicle.Fill = Brushes.LimeGreen;
+                        cbVehiclePort.IsEnabled = false;
+                        AppendMessage(vehicleMessages, "[SYSTEM] Connected to " + vehiclePort, false);
+                    }
 
                     isConnected = true;
                     btnConnect.Content = "DISCONNECT";
 
-                    ledStation.Fill = Brushes.LimeGreen;
-                    ledVehicle.Fill = Brushes.LimeGreen;
-
-                    cbStationPort.IsEnabled = false;
-                    cbVehiclePort.IsEnabled = false;
-
-                    txtStatus.Text = $"Connesso - Station: {stationPort}, Vehicle: {vehiclePort}";
-
-                    AppendMessage(stationMessages, "[SYSTEM] Connected to " + stationPort, false);
-                    AppendMessage(vehicleMessages, "[SYSTEM] Connected to " + vehiclePort, false);
+                    txtStatus.Text = $"Connected - Station: {stationConnected}, Vehicle: {vehicleConnected}";
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Errore connessione: {ex.Message}", "Errore",
+                    MessageBox.Show($"Error connecting: {ex.Message}", "Error",
                         MessageBoxButton.OK, MessageBoxImage.Error);
 
                     if (spStation.IsOpen) spStation.Close();
@@ -430,7 +438,7 @@ namespace WLESS_CHRG_CTRL
                 cbStationPort.IsEnabled = true;
                 cbVehiclePort.IsEnabled = true;
 
-                txtStatus.Text = "Disconnesso - Pronto per nuova connessione";
+                txtStatus.Text = "Disconnected - Ready for new connection";
 
                 AppendMessage(stationMessages, "[SYSTEM] Disconnected", false);
                 AppendMessage(vehicleMessages, "[SYSTEM] Disconnected", false);
@@ -512,12 +520,46 @@ namespace WLESS_CHRG_CTRL
 
         private void MenuParseStation_Click(object sender, RoutedEventArgs e)
         {
-            ParseUqResponse(stationMessages, lvStationMessages, "Station");
+            ParseResponse(stationMessages, lvStationMessages, "Station");
         }
 
         private void MenuParseVehicle_Click(object sender, RoutedEventArgs e)
         {
-            ParseUqResponse(vehicleMessages, lvVehicleMessages, "Vehicle");
+            ParseResponse(vehicleMessages, lvVehicleMessages, "Vehicle");
+        }
+
+        private void ParseResponse(ObservableCollection<SerialMessage> collection,
+            ListView listView, string sourceName)
+        {
+            if (listView.SelectedItem == null)
+            {
+                MessageBox.Show("Select the first row of the message to decode.",
+                    "Parse Message", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Trova l'indice dell'elemento selezionato nella collection
+            int startIndex = listView.SelectedIndex;
+            if (startIndex < 0 || startIndex >= collection.Count)
+            {
+                MessageBox.Show("Invalid selection.", "Parse Message",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var selectedMessage = collection[startIndex];
+
+            // Verifica che la riga selezionata inizi con uno dei messaggi risposta validi (UQ?, U, ecc.)
+            if (selectedMessage.Message.Trim().StartsWith("U,"))
+                ParseUqResponse(collection, sourceName, startIndex);
+            else
+            {
+                MessageBox.Show("The selected row does not start with any of the expected headers.\n" +
+                    "Please select the first row of the message.",
+                    "Parse Message", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
         }
 
         /// <summary>
@@ -526,35 +568,9 @@ namespace WLESS_CHRG_CTRL
         /// a un messaggio di sistema o un altro comando.
         /// </summary>
         private void ParseUqResponse(ObservableCollection<SerialMessage> collection,
-            ListView listView, string sourceName)
+            string sourceName, int startIndex)
         {
-            // Verifica selezione
-            if (listView.SelectedItem == null)
-            {
-                MessageBox.Show("Seleziona la prima riga della risposta UQ? da decodificare.",
-                    "Parse Status", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            // Trova l'indice dell'elemento selezionato nella collection
-            int startIndex = listView.SelectedIndex;
-            if (startIndex < 0 || startIndex >= collection.Count)
-            {
-                MessageBox.Show("Selezione non valida.", "Parse Status",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             var selectedMessage = collection[startIndex];
-
-            // Verifica che la riga selezionata inizi con "U,"
-            if (!selectedMessage.Message.Trim().StartsWith("U,"))
-            {
-                MessageBox.Show("La riga selezionata non inizia con 'U,'.\n" +
-                    "Seleziona la prima riga della risposta UQ?.",
-                    "Parse Status", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
 
             // Ricostruisce la risposta dalla riga selezionata in poi
             var uqFragments = new List<string>();
@@ -799,31 +815,6 @@ namespace WLESS_CHRG_CTRL
         private void MenuExit_Click(object sender, RoutedEventArgs e)
         {
             Close();
-        }
-        // Aggiorna le label di configurazione visibile
-        private static void UpdateConfigLabels()
-        {
-            var settings = WLESS_CHRG_CTRL.Properties.Settings.Default;
-            string parityAbbr = settings.SerialParity switch
-            {
-                "None" => "N",
-                "Odd" => "O",
-                "Even" => "E",
-                "Mark" => "M",
-                "Space" => "S",
-                _ => "N"
-            };
-            string stopAbbr = settings.SerialStopBits switch
-            {
-                "None" => "0",
-                "One" => "1",
-                "Two" => "2",
-                "OnePointFive" => "1.5",
-                _ => "1"
-            };
-
-            string configText = $"Config: {settings.SerialBaudRate}, {settings.SerialDataBits}, {parityAbbr}, {stopAbbr}";
-            // Aggiorna le TextBlock config nelle due porte (richiede x:Name nei TextBlock)
         }
     }
 }

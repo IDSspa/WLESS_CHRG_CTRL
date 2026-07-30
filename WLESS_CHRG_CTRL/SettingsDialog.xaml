@@ -39,7 +39,7 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <Label Grid.Row="0" 
-                   Content="Banned Ports (separated by ';'):" 
+                   Content="Banned Ports:" 
                    FontWeight="Bold"/>
             <TextBox Grid.Row="1" 
                      x:Name="txtBannedPorts"
@@ -63,7 +63,7 @@
                 </Grid.RowDefinitions>
 
                 <Label Grid.Row="0" 
-                       Content="Serial Port Configuration (shared for Station and Vehicle)" 
+                       Content="Serial Port Configuration" 
                        FontWeight="Bold"
                        Margin="0,0,0,8"/>
 
