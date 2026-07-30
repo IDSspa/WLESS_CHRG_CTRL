@@ -9,6 +9,56 @@
         <Style TargetType="ListViewItem">
             <Setter Property="Foreground" Value="{Binding TextColor}"/>
         </Style>
+
+        <!-- Card per i pannelli di connessione -->
+        <Style x:Key="ConnectionCard" TargetType="Border">
+            <Setter Property="Background" Value="#FAFAFA"/>
+            <Setter Property="BorderBrush" Value="#E2E2E2"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#000000" Opacity="0.06" BlurRadius="8" ShadowDepth="1" Direction="270"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PortComboBox" TargetType="ComboBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="BorderBrush" Value="#CCCCCC"/>
+        </Style>
+
+        <!-- Bottone Connect/Disconnect in stile flat -->
+        <Style x:Key="ConnectButton" TargetType="Button">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Width" Value="92"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Background" Value="#2D7DD2"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#256bb3"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#1c539c"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <DockPanel>
@@ -26,129 +76,97 @@
             <!-- ... tutto il contenuto precedente ... -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- Titolo -->
-            <TextBlock Grid.Row="0" 
-                       Text="WLESS CHRG CTRL" 
-                       FontSize="20" 
-                       FontWeight="Bold" 
-                       HorizontalAlignment="Center"
-                       Margin="0,0,0,15"/>
 
             <!-- Sezione Porte Seriali -->
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="0" Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="12"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Station Port -->
-                <Border Grid.Column="0" 
-                        BorderBrush="Gray" 
-                        BorderThickness="1" 
-                        Padding="12" 
-                        CornerRadius="4">
+                <!-- Station -->
+                <Border Grid.Column="0" Style="{StaticResource ConnectionCard}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                            <Label Content="STATION PORT:" VerticalAlignment="Center"/>
-                            <ComboBox x:Name="cbStationPort" 
-                                      Width="120" 
-                                      VerticalAlignment="Center"
-                                      ToolTip="Select station serial port"/>
-                            <Ellipse x:Name="ledStation" 
-                                     Width="14" 
-                                     Height="14" 
-                                     Fill="Gray" 
-                                     Margin="10,0,0,0" 
-                                     VerticalAlignment="Center"
-                                     ToolTip="Station connection status"/>
+
+                        <!-- Header: LED + titolo -->
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                            <Ellipse x:Name="ledStation" Width="9" Height="9" Fill="Gray"
+                         VerticalAlignment="Center" Margin="0,0,8,0"
+                         ToolTip="Station connection status"/>
+                            <TextBlock Text="STATION" FontWeight="SemiBold" FontSize="12"
+                           Foreground="#444" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Button Grid.Row="1" 
-                                x:Name="btnStationConnect" 
-                                Content="CONNECT" 
-                                Click="BtnStationConnect_Click"
-                                HorizontalAlignment="Left"
-                                Padding="20,5"
-                                Margin="0,0,0,8"
-                                ToolTip="Open/Close Station connection"/>
-                        <Label Grid.Row="2" 
-                               x:Name="lblStationRole" 
-                               Content="" 
-                               Foreground="DodgerBlue"
-                               FontSize="11"    
-                               Margin="0,0,0,4"/>
-                        <TextBlock Grid.Row="3" 
-                                   Text="Config: 115200, 8, N, 1" 
-                                   Foreground="Gray" 
-                                   FontSize="10"/>
+
+                        <!-- Combo + Connect nella stessa riga -->
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0" x:Name="cbStationPort" Style="{StaticResource PortComboBox}"
+                          ToolTip="Select station serial port"/>
+                            <Button Grid.Column="2" x:Name="btnStationConnect" Content="CONNECT"
+                        Click="BtnStationConnect_Click" Style="{StaticResource ConnectButton}"
+                        ToolTip="Open/Close Station connection"/>
+                        </Grid>
+
+                        <!-- Ruolo -->
+                        <TextBlock Grid.Row="2" x:Name="lblStationRole" Text=""
+                       Foreground="DodgerBlue" FontSize="11" Margin="0,8,0,0"/>
                     </Grid>
                 </Border>
 
-                <!-- Vehicle Port -->
-                <Border Grid.Column="2" 
-                        BorderBrush="Gray" 
-                        BorderThickness="1" 
-                        Padding="12" 
-                        CornerRadius="4">
+                <!-- Vehicle (speculare) -->
+                <Border Grid.Column="2" Style="{StaticResource ConnectionCard}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Right">
-                            <Ellipse x:Name="ledVehicle" 
-                                     Width="14" 
-                                     Height="14" 
-                                     Fill="Gray" 
-                                     Margin="0,0,10,0" 
-                                     VerticalAlignment="Center"
-                                     ToolTip="Vehicle connection status"/>
-                            <ComboBox x:Name="cbVehiclePort" 
-                                      Width="120" 
-                                      VerticalAlignment="Center"
-                                      ToolTip="Select vehicle serial port"/>
-                            <Label Content=":VEHICLE PORT" VerticalAlignment="Center"/>
+
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
+                            <TextBlock Text="VEHICLE" FontWeight="SemiBold" FontSize="12"
+                           Foreground="#444" VerticalAlignment="Center"/>
+                            <Ellipse x:Name="ledVehicle" Width="9" Height="9" Fill="Gray"
+                         VerticalAlignment="Center" Margin="8,0,0,0"
+                         ToolTip="Vehicle connection status"/>
                         </StackPanel>
-                        <Button Grid.Row="1" 
-                                x:Name="btnVehicleConnect" 
-                                Content="CONNECT" 
-                                Click="BtnVehicleConnect_Click"
-                                HorizontalAlignment="Right"
-                                Padding="20,5"
-                                Margin="0,0,0,8"
-                                ToolTip="Open/Close Vehicle connection"/>
-                        <Label Grid.Row="2" 
-                               x:Name="lblVehicleRole" 
-                               Content="" 
-                               Foreground="DodgerBlue"
-                               FontSize="11"
-                               HorizontalAlignment="Right"
-                               Margin="0,0,0,4"/>
-                        <TextBlock Grid.Row="3" 
-                                   Text="Config: 115200, 8, N, 1" 
-                                   Foreground="Gray" 
-                                   FontSize="10"
-                                   HorizontalAlignment="Right"/>
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" x:Name="btnVehicleConnect" Content="CONNECT"
+                        Click="BtnVehicleConnect_Click" Style="{StaticResource ConnectButton}"
+                        ToolTip="Open/Close Vehicle connection"/>
+                            <ComboBox Grid.Column="2" x:Name="cbVehiclePort" Style="{StaticResource PortComboBox}"
+                          ToolTip="Select vehicle serial port"/>
+                        </Grid>
+
+                        <TextBlock Grid.Row="2" x:Name="lblVehicleRole" Text=""
+                       Foreground="DodgerBlue" FontSize="11"
+                       HorizontalAlignment="Right" Margin="0,8,0,0"/>
                     </Grid>
                 </Border>
             </Grid>
-
+            
             <!-- Sezione ListView Messaggi -->
-            <Grid Grid.Row="2" Margin="0,15,0,0">
+            <Grid Grid.Row="1" Margin="0,15,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="10"/>
@@ -240,7 +258,7 @@
             </Grid>
 
             <!-- Sezione Comandi -->
-            <Grid Grid.Row="3" Margin="0,15,0,0">
+            <Grid Grid.Row="2" Margin="0,15,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="10"/>
@@ -271,7 +289,7 @@
             </Grid>
 
             <!-- Status Bar -->
-            <StatusBar Grid.Row="4" 
+            <StatusBar Grid.Row="3" 
                        Margin="0,10,0,0">
                 <StatusBarItem>
                     <TextBlock x:Name="txtStatus" Text="Ready - Select serial ports and click CONNECT"/>

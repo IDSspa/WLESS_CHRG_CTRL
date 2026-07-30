@@ -476,17 +476,17 @@ namespace WLESS_CHRG_CTRL
 
             var selectedMessage = collection[startIndex];
 
-            // Verifica che la riga selezionata inizi con uno dei messaggi risposta validi (UQ?, U, ecc.)
-            if (selectedMessage.Message.Trim().StartsWith("U,"))
-                ParseUqResponse(collection, sourceName, startIndex);
-            else if (selectedMessage.Message.Trim().StartsWith("H,"))
+            // Verifica che la riga selezionata inizi con uno dei messaggi risposta validi (UQ, CAPS, HFC..)
+            if (selectedMessage.Message.Trim().StartsWith(Properties.Resources.UQ_REPLY_HEADER))
+                ParseUQResponse(collection, sourceName, startIndex);
+            else if (selectedMessage.Message.Trim().StartsWith(Properties.Resources.HFC_REPLY_HEADER))
                 ParseHFCResponse(collection, sourceName, startIndex);
-            else if (selectedMessage.Message.Trim().StartsWith("C,"))
+            else if (selectedMessage.Message.Trim().StartsWith(Properties.Resources.CAPS_REPLY_HEADER))
                 ParseCAPResponse(collection, sourceName, startIndex);
             else
             {
                 MessageBox.Show("The selected row does not start with any of the expected headers.\n" +
-                    "Please select the first row of the message.",
+                    "Please select the first row of a valid message.",
                     "Parse Message", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
@@ -498,7 +498,7 @@ namespace WLESS_CHRG_CTRL
         /// Raccoglie la riga selezionata e tutte le successive contigue fino
         /// a un messaggio di sistema o un altro comando.
         /// </summary>
-        private void ParseUqResponse(ObservableCollection<SerialMessage> collection,
+        private void ParseUQResponse(ObservableCollection<SerialMessage> collection,
             string sourceName, int startIndex)
         {
             var selectedMessage = collection[startIndex];
