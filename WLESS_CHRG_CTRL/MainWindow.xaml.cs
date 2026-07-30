@@ -5,11 +5,14 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 
 namespace WLESS_CHRG_CTRL
@@ -34,7 +37,9 @@ namespace WLESS_CHRG_CTRL
 
         private static readonly Brush DefaultTextColor = Brushes.Black;
         private static readonly Brush TxTextColor = Brushes.Green;
-
+        private IntPtr deviceNotificationHandle = IntPtr.Zero;
+        private HwndSource? hwndSource;
+        private readonly DispatcherTimer deviceChangeDebounceTimer;
         private readonly Dispatcher uiDispatcher;
 
         /// <summary>
@@ -96,6 +101,10 @@ namespace WLESS_CHRG_CTRL
             "i_l_raw_b_mA"
         ];
 
+        private static readonly List<string> HFCFieldNames =
+        [
+        ];
+
         public MainWindow()
         {
             InitializeComponent();
@@ -110,6 +119,85 @@ namespace WLESS_CHRG_CTRL
 
             spStation.DataReceived += SpStation_DataReceived;
             spVehicle.DataReceived += SpVehicle_DataReceived;
+
+            deviceChangeDebounceTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(600)
+            };
+            deviceChangeDebounceTimer.Tick += DeviceChangeDebounceTimer_Tick;
+
+            // Il HWND non esiste ancora finché la finestra non è stata mostrata/renderizzata,
+            // quindi agganciamo la registrazione all'evento SourceInitialized.
+            SourceInitialized += MainWindow_SourceInitialized;
+        }
+
+        /// <summary>
+        /// Wrapper per le API Win32 di device notification (RegisterDeviceNotification),
+        /// usate per intercettare hot-plug/unplug di adattatori seriali USB senza WMI.
+        /// </summary>
+        internal static class DeviceNotificationNative
+        {
+            public const int WM_DEVICECHANGE = 0x0219;
+            public const int DBT_DEVICEARRIVAL = 0x8000;
+            public const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
+
+            private const int DBT_DEVTYP_DEVICEINTERFACE = 5;
+            private const int DEVICE_NOTIFY_WINDOW_HANDLE = 0x00000000;
+
+            // GUID_DEVINTERFACE_COMPORT — identifica le interfacce di device "porta seriale"
+            // (sia fisiche RS232 che virtuali esposte da adattatori USB-seriale/FTDI/CH340/CP210x)
+            private static readonly Guid GUID_DEVINTERFACE_COMPORT =
+                new("86E0D1E0-8089-11D0-9CE4-08003E301F73");
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct DEV_BROADCAST_DEVICEINTERFACE
+            {
+                public int dbcc_size;
+                public int dbcc_devicetype;
+                public int dbcc_reserved;
+                public Guid dbcc_classguid;
+                // dbcc_name: char array a lunghezza variabile, non ci serve leggerlo
+            }
+
+            [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+            private static extern IntPtr RegisterDeviceNotification(
+                IntPtr hRecipient, IntPtr notificationFilter, int flags);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool UnregisterDeviceNotification(IntPtr handle);
+
+            /// <summary>
+            /// Registra la finestra (via hwnd) per ricevere notifiche WM_DEVICECHANGE
+            /// filtrate sull'interfaccia COM port. Ritorna l'handle di registrazione,
+            /// da passare a Unregister quando la finestra viene chiusa.
+            /// </summary>
+            public static IntPtr Register(IntPtr windowHandle)
+            {
+                var dbi = new DEV_BROADCAST_DEVICEINTERFACE
+                {
+                    dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
+                    dbcc_reserved = 0,
+                    dbcc_classguid = GUID_DEVINTERFACE_COMPORT
+                };
+                dbi.dbcc_size = Marshal.SizeOf(dbi);
+
+                IntPtr buffer = Marshal.AllocHGlobal(dbi.dbcc_size);
+                try
+                {
+                    Marshal.StructureToPtr(dbi, buffer, false);
+                    return RegisterDeviceNotification(windowHandle, buffer, DEVICE_NOTIFY_WINDOW_HANDLE);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(buffer);
+                }
+            }
+
+            public static void Unregister(IntPtr notificationHandle)
+            {
+                if (notificationHandle != IntPtr.Zero)
+                    UnregisterDeviceNotification(notificationHandle);
+            }
         }
 
         /// <summary>
@@ -120,7 +208,6 @@ namespace WLESS_CHRG_CTRL
         {
             string[] allPorts = SerialPort.GetPortNames();
 
-            // Carica e parsa le porte bannate
             var bannedPorts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string bannedSetting = Properties.Settings.Default.BannedPorts;
 
@@ -128,15 +215,15 @@ namespace WLESS_CHRG_CTRL
             {
                 var split = bannedSetting.Split([';'], StringSplitOptions.RemoveEmptyEntries);
                 foreach (var p in split)
-                {
                     bannedPorts.Add(p.Trim());
-                }
             }
 
-            // Filtra le porte disponibili
             var availablePorts = allPorts
                 .Where(p => !bannedPorts.Contains(p.Trim()))
                 .ToList();
+
+            var previousStation = cbStationPort.SelectedItem?.ToString();
+            var previousVehicle = cbVehiclePort.SelectedItem?.ToString();
 
             cbStationPort.Items.Clear();
             cbVehiclePort.Items.Clear();
@@ -147,21 +234,20 @@ namespace WLESS_CHRG_CTRL
                 cbVehiclePort.Items.Add(port);
             }
 
-            if (cbStationPort.Items.Count > 0)
+            if (previousStation != null && availablePorts.Contains(previousStation))
+                cbStationPort.SelectedItem = previousStation;
+            else if (cbStationPort.Items.Count > 0)
                 cbStationPort.SelectedIndex = 0;
-            if (cbVehiclePort.Items.Count > 0)
+
+            if (previousVehicle != null && availablePorts.Contains(previousVehicle))
+                cbVehiclePort.SelectedItem = previousVehicle;
+            else if (cbVehiclePort.Items.Count > 0)
                 cbVehiclePort.SelectedIndex = Math.Min(1, cbVehiclePort.Items.Count - 1);
 
-            // Aggiorna status se alcune porte sono state filtrate
             int filteredCount = allPorts.Length - availablePorts.Count;
-            if (filteredCount > 0)
-            {
-                txtStatus.Text = $"Found {availablePorts.Count} ports ({filteredCount} filtered by BannedPorts)";
-            }
-            else
-            {
-                txtStatus.Text = $"Found {availablePorts.Count} serial ports";
-            }
+            txtStatus.Text = filteredCount > 0
+                ? $"Found {availablePorts.Count} ports ({filteredCount} filtered by BannedPorts)"
+                : $"Found {availablePorts.Count} serial ports";
         }
 
         /// <summary>
@@ -169,7 +255,7 @@ namespace WLESS_CHRG_CTRL
         /// </summary>
         private static void ConfigureSerialPort(SerialPort sp)
         {
-            var settings = WLESS_CHRG_CTRL.Properties.Settings.Default;
+            var settings = Properties.Settings.Default;
 
             sp.BaudRate = settings.SerialBaudRate;
             sp.DataBits = settings.SerialDataBits;
@@ -191,30 +277,10 @@ namespace WLESS_CHRG_CTRL
             sp.NewLine = "\r\n";
         }
 
-        private void SpStation_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        private static void ScrollToLastItem(ListView listView)
         {
-            try
-            {
-                string data = spStation.ReadExisting();
-                AppendMessage(stationMessages, data, false);
-            }
-            catch (Exception ex)
-            {
-                AppendMessage(stationMessages, $"[ERROR] {ex.Message}", false);
-            }
-        }
-
-        private void SpVehicle_DataReceived(object sender, SerialDataReceivedEventArgs e)
-        {
-            try
-            {
-                string data = spVehicle.ReadExisting();
-                AppendMessage(vehicleMessages, data, false);
-            }
-            catch (Exception ex)
-            {
-                AppendMessage(vehicleMessages, $"[ERROR] {ex.Message}", false);
-            }
+            if (listView.Items.Count > 0)
+                listView.ScrollIntoView(listView.Items[^1]);
         }
 
         private void AppendMessage(ObservableCollection<SerialMessage> collection, string message, bool isTx)
@@ -285,34 +351,32 @@ namespace WLESS_CHRG_CTRL
             messageColumn.Width = Math.Min(newWidth, maxAllowedWidth);
         }
 
-        private static void ScrollToLastItem(ListView listView)
+        private void SendCommand(SerialPort port, TextBox textBox, ObservableCollection<SerialMessage> collection)
         {
-            if (listView.Items.Count > 0)
-                listView.ScrollIntoView(listView.Items[^1]);
-        }
+            string command = textBox.Text.Trim();
 
-        private void MenuClearStation_Click(object sender, RoutedEventArgs e)
-        {
-            stationMessages.Clear();
-            gvcStationMessage.Width = 380;
-            txtStatus.Text = "Station messages cleared";
-        }
+            if (string.IsNullOrEmpty(command))
+                return;
 
-        private void MenuClearVehicle_Click(object sender, RoutedEventArgs e)
-        {
-            vehicleMessages.Clear();
-            gvcVehicleMessage.Width = 380;
-            txtStatus.Text = "Vehicle messages cleared";
-        }
+            if (!port.IsOpen)
+            {
+                AppendMessage(collection, "[ERROR] Porta non connessa!", false);
+                return;
+            }
 
-        private void MenuSaveStation_Click(object sender, RoutedEventArgs e)
-        {
-            SaveMessagesToFile(stationMessages, "Station");
-        }
+            try
+            {
+                if (!command.EndsWith("\r\n"))
+                    command += "\r\n";
 
-        private void MenuSaveVehicle_Click(object sender, RoutedEventArgs e)
-        {
-            SaveMessagesToFile(vehicleMessages, "Vehicle");
+                port.Write(command);
+                AppendMessage(collection, $"[TX] {textBox.Text.Trim()}", true);
+                textBox.Clear();
+            }
+            catch (Exception ex)
+            {
+                AppendMessage(collection, $"[ERROR] Send failed: {ex.Message}", false);
+            }
         }
 
         private void SaveMessagesToFile(ObservableCollection<SerialMessage> collection, string portName)
@@ -356,6 +420,330 @@ namespace WLESS_CHRG_CTRL
                     MessageBox.Show($"Errore durante il salvataggio:\n{ex.Message}", "Errore",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                 }
+            }
+        }
+
+        private void ParseResponse(ObservableCollection<SerialMessage> collection,
+            ListView listView, string sourceName)
+        {
+            if (listView.SelectedItem == null)
+            {
+                MessageBox.Show("Select the first row of the message to decode.",
+                    "Parse Message", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Trova l'indice dell'elemento selezionato nella collection
+            int startIndex = listView.SelectedIndex;
+            if (startIndex < 0 || startIndex >= collection.Count)
+            {
+                MessageBox.Show("Invalid selection.", "Parse Message",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var selectedMessage = collection[startIndex];
+
+            // Verifica che la riga selezionata inizi con uno dei messaggi risposta validi (UQ?, U, ecc.)
+            if (selectedMessage.Message.Trim().StartsWith("U,"))
+                ParseUqResponse(collection, sourceName, startIndex);
+            else if (selectedMessage.Message.Trim().StartsWith("HFC,"))
+                ParseHFCResponse(collection, sourceName, startIndex);
+            else
+            {
+                MessageBox.Show("The selected row does not start with any of the expected headers.\n" +
+                    "Please select the first row of the message.",
+                    "Parse Message", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+        }
+
+        /// <summary>
+        /// Parsa la risposta UQ? a partire dalla riga selezionata dall'utente.
+        /// Raccoglie la riga selezionata e tutte le successive contigue fino
+        /// a un messaggio di sistema o un altro comando.
+        /// </summary>
+        private void ParseUqResponse(ObservableCollection<SerialMessage> collection,
+            string sourceName, int startIndex)
+        {
+            var selectedMessage = collection[startIndex];
+
+            // Ricostruisce la risposta dalla riga selezionata in poi
+            var uqFragments = new List<string>();
+
+            // Primo frammento: rimuovi "U,"
+            string firstFragment = selectedMessage.Message.Trim()[2..];
+            uqFragments.Add(firstFragment);
+
+            // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
+            for (int i = startIndex + 1; i < collection.Count; i++)
+            {
+                string msg = collection[i].Message.Trim();
+
+                // Interrompi se trovi un comando inviato, un errore di sistema, o un'altra risposta U,
+                if (msg.StartsWith("[TX]") ||
+                    msg.StartsWith("[SYSTEM]") ||
+                    msg.StartsWith("[ERROR]") ||
+                    msg.StartsWith("U,"))
+                {
+                    break;
+                }
+
+                uqFragments.Add(msg);
+            }
+
+            try
+            {
+                // Concatena tutti i frammenti
+                var sb = new StringBuilder();
+                for (int i = 0; i < uqFragments.Count; i++)
+                {
+                    string fragment = uqFragments[i];
+
+                    // Aggiungi virgola di giunzione se necessario
+                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append(fragment);
+                }
+
+                string fullPayload = sb.ToString();
+
+                // Splitta per virgole
+                var rawValues = fullPayload.Split([','], StringSplitOptions.RemoveEmptyEntries);
+
+                // Trim e filtra
+                var values = new List<string>();
+                foreach (var v in rawValues)
+                {
+                    string trimmed = v.Trim();
+                    if (!string.IsNullOrWhiteSpace(trimmed))
+                        values.Add(trimmed);
+                }
+
+                // Apri dialog
+                var dialog = new StatusDialog(sourceName, UQFieldNames, values)
+                {
+                    Owner = this
+                };
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void ParseHFCResponse(ObservableCollection<SerialMessage> collection, string sourceName, int startIndex)
+        { 
+        }
+
+        /// <summary>
+        /// Apre il dialog multi-linea e, se confermato, invia i comandi in sequenza con ritardo.
+        /// </summary>
+        private void OpenCmdLinesDialog(SerialPort port, TextBox associatedTextBox,
+            ObservableCollection<SerialMessage> messageCollection)
+        {
+            var dialog = new CmdLinesDialog
+            {
+                Owner = this
+            };
+
+            // Pre-popola con il contenuto attuale della TextBox (se presente)
+            if (!string.IsNullOrWhiteSpace(associatedTextBox.Text))
+            {
+                dialog.txtCmdLines.Text = associatedTextBox.Text;
+            }
+
+            if (dialog.ShowDialog() == true)
+            {
+                // Avvia l'invio sequenziale in background per non bloccare la UI
+                _ = SendCommandsSequenceAsync(port, dialog.CmdLines, dialog.CmdDelay,
+                    messageCollection);
+            }
+        }
+
+        /// <summary>
+        /// Invia una sequenza di comandi con ritardo specificato tra uno e l'altro.
+        /// Eseguito in background per non bloccare l'interfaccia utente.
+        /// </summary>
+        private async System.Threading.Tasks.Task SendCommandsSequenceAsync(
+            SerialPort port,
+            List<string> commands,
+            int delayMs,
+            ObservableCollection<SerialMessage> messageCollection)
+        {
+            if (!port.IsOpen)
+            {
+                uiDispatcher.Invoke(() =>
+                {
+                    AppendMessage(messageCollection, "[ERROR] Porta non connessa — sequenza annullata.", false);
+                });
+                return;
+            }
+
+            uiDispatcher.Invoke(() =>
+            {
+                AppendMessage(messageCollection, $"[SYSTEM] Starting sequence of {commands.Count} commands (delay: {delayMs}ms)", false);
+            });
+
+            for (int i = 0; i < commands.Count; i++)
+            {
+                string cmd = commands[i].Trim();
+
+                if (string.IsNullOrEmpty(cmd))
+                    continue;
+
+                // Verifica connessione ancora attiva
+                if (!port.IsOpen)
+                {
+                    uiDispatcher.Invoke(() =>
+                    {
+                        AppendMessage(messageCollection, "[ERROR] Connessione persa durante la sequenza.", false);
+                    });
+                    return;
+                }
+
+                try
+                {
+                    string cmdWithNewline = cmd.EndsWith("\r\n") ? cmd : cmd + "\r\n";
+                    port.Write(cmdWithNewline);
+
+                    uiDispatcher.Invoke(() =>
+                    {
+                        AppendMessage(messageCollection, $"[TX] [{i + 1}/{commands.Count}] {cmd}", true);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    uiDispatcher.Invoke(() =>
+                    {
+                        AppendMessage(messageCollection, $"[ERROR] Command {i + 1} failed: {ex.Message}", false);
+                    });
+                    return;
+                }
+
+                // Ritardo prima del prossimo comando (non dopo l'ultimo)
+                if (i < commands.Count - 1 && delayMs > 0)
+                {
+                    await System.Threading.Tasks.Task.Delay(delayMs);
+                }
+            }
+
+            uiDispatcher.Invoke(() =>
+            {
+                AppendMessage(messageCollection, $"[SYSTEM] Sequence completed ({commands.Count} commands sent)", false);
+            });
+        }
+
+
+        /// <summary>
+        /// Intercetta i messaggi Win32 della finestra. Ci interessa solo WM_DEVICECHANGE
+        /// con subtype arrivo/rimozione device, per rilevare l'hot-plug di adattatori
+        /// seriali USB senza dover fare polling o usare WMI.
+        /// </summary>
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == DeviceNotificationNative.WM_DEVICECHANGE)
+            {
+                int eventType = wParam.ToInt32();
+
+                if (eventType == DeviceNotificationNative.DBT_DEVICEARRIVAL ||
+                    eventType == DeviceNotificationNative.DBT_DEVICEREMOVECOMPLETE)
+                {
+                    // Riavvia il debounce: eventi multipli ravvicinati sono comuni
+                    // durante l'enumerazione di device composite.
+                    deviceChangeDebounceTimer.Stop();
+                    deviceChangeDebounceTimer.Start();
+                }
+            }
+
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// Verifica se una delle porte attualmente connesse (Station/Vehicle) è
+        /// sparita dall'elenco delle porte di sistema (device fisicamente rimosso)
+        /// e, in tal caso, esegue il cleanup della connessione.
+        /// </summary>
+        private void CheckForDisconnectedActivePorts()
+        {
+            var currentPorts = new HashSet<string>(SerialPort.GetPortNames(), StringComparer.OrdinalIgnoreCase);
+
+            if (isStationConnected && !currentPorts.Contains(spStation.PortName))
+            {
+                HandlePortDisconnected(spStation, ref isStationConnected, btnStationConnect,
+                    ledStation, cbStationPort, stationMessages, "Station");
+            }
+
+            if (isVehicleConnected && !currentPorts.Contains(spVehicle.PortName))
+            {
+                HandlePortDisconnected(spVehicle, ref isVehicleConnected, btnVehicleConnect,
+                    ledVehicle, cbVehiclePort, vehicleMessages, "Vehicle");
+            }
+        }
+
+        /// <summary>
+        /// Esegue il cleanup di una connessione seriale quando il device fisico
+        /// è stato rimosso mentre era in uso: chiude la SerialPort, ripristina
+        /// lo stato UI (LED, bottone, combo) e notifica l'evento all'utente.
+        /// </summary>
+        private void HandlePortDisconnected(SerialPort port, ref bool isConnectedFlag, Button connectButton,
+            Ellipse led, ComboBox portComboBox, ObservableCollection<SerialMessage> collection, string roleName)
+        {
+            string portName = port.PortName;
+
+            try
+            {
+                // A questo punto il device non esiste più fisicamente: Close() può
+                // comunque fallire (es. I/O pendente), ma va tentato per rilasciare
+                // le risorse gestite dal SerialPort.
+                if (port.IsOpen) port.Close();
+            }
+            catch (Exception ex)
+            {
+                AppendMessage(collection, $"[ERROR] Error while closing {roleName} port after disconnect: {ex.Message}", false);
+            }
+
+            isConnectedFlag = false;
+            connectButton.Content = "CONNECT";
+            led.Fill = Brushes.Gray;
+            portComboBox.IsEnabled = true;
+
+            AppendMessage(collection, $"[SYSTEM] {roleName} port {portName} disconnected (device removed)", false);
+
+            txtStatus.Text = $"{roleName} port {portName} was disconnected — device removed";
+        }
+
+        // ==================== EVENT HANDLERS ====================
+
+        private void SpStation_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            try
+            {
+                string data = spStation.ReadExisting();
+                AppendMessage(stationMessages, data, false);
+            }
+            catch (Exception ex)
+            {
+                AppendMessage(stationMessages, $"[ERROR] {ex.Message}", false);
+            }
+        }
+
+        private void SpVehicle_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        {
+            try
+            {
+                string data = spVehicle.ReadExisting();
+                AppendMessage(vehicleMessages, data, false);
+            }
+            catch (Exception ex)
+            {
+                AppendMessage(vehicleMessages, $"[ERROR] {ex.Message}", false);
             }
         }
 
@@ -470,6 +858,7 @@ namespace WLESS_CHRG_CTRL
                 AppendMessage(vehicleMessages, "[SYSTEM] Disconnected", false);
             }
         }
+
         private void TxtStationCommand_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
@@ -480,35 +869,6 @@ namespace WLESS_CHRG_CTRL
         {
             if (e.Key == Key.Enter)
                 SendCommand(spVehicle, txtVehicleCommand, vehicleMessages);
-        }
-
-        private void SendCommand(SerialPort port, TextBox textBox,
-            ObservableCollection<SerialMessage> collection)
-        {
-            string command = textBox.Text.Trim();
-
-            if (string.IsNullOrEmpty(command))
-                return;
-
-            if (!port.IsOpen)
-            {
-                AppendMessage(collection, "[ERROR] Porta non connessa!", false);
-                return;
-            }
-
-            try
-            {
-                if (!command.EndsWith("\r\n"))
-                    command += "\r\n";
-
-                port.Write(command);
-                AppendMessage(collection, $"[TX] {textBox.Text.Trim()}", true);
-                textBox.Clear();
-            }
-            catch (Exception ex)
-            {
-                AppendMessage(collection, $"[ERROR] Send failed: {ex.Message}", false);
-            }
         }
 
         private void LvMessages_KeyDown(object sender, KeyEventArgs e)
@@ -522,7 +882,7 @@ namespace WLESS_CHRG_CTRL
 
                 foreach (SerialMessage msg in listView.SelectedItems.Cast<SerialMessage>())
                 {
-                    sb.AppendLine($"{msg.Time}\t{msg.Message}");
+                    sb.AppendLine($"{msg.Message}");
                 }
 
                 Clipboard.SetText(sb.ToString());
@@ -541,245 +901,36 @@ namespace WLESS_CHRG_CTRL
             gvcVehicleMessage.Width = 380;
         }
 
-        // ==================== CONTEXT MENU: PARSE UQ? RESPONSE ====================
-
-        private void MenuParseStation_Click(object sender, RoutedEventArgs e)
+        private void DeviceChangeDebounceTimer_Tick(object? sender, EventArgs e)
         {
-            ParseResponse(stationMessages, lvStationMessages, "Station");
+            deviceChangeDebounceTimer.Stop();
+            PopulateSerialPorts();
+            CheckForDisconnectedActivePorts();
         }
 
-        private void MenuParseVehicle_Click(object sender, RoutedEventArgs e)
+        private void MainWindow_SourceInitialized(object? sender, EventArgs e)
         {
-            ParseResponse(vehicleMessages, lvVehicleMessages, "Vehicle");
-        }
-
-        private void ParseResponse(ObservableCollection<SerialMessage> collection,
-            ListView listView, string sourceName)
-        {
-            if (listView.SelectedItem == null)
-            {
-                MessageBox.Show("Select the first row of the message to decode.",
-                    "Parse Message", MessageBoxButton.OK, MessageBoxImage.Information);
+            hwndSource = (HwndSource?)PresentationSource.FromVisual(this);
+            if (hwndSource == null)
                 return;
-            }
 
-            // Trova l'indice dell'elemento selezionato nella collection
-            int startIndex = listView.SelectedIndex;
-            if (startIndex < 0 || startIndex >= collection.Count)
-            {
-                MessageBox.Show("Invalid selection.", "Parse Message",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var selectedMessage = collection[startIndex];
-
-            // Verifica che la riga selezionata inizi con uno dei messaggi risposta validi (UQ?, U, ecc.)
-            if (selectedMessage.Message.Trim().StartsWith("U,"))
-                ParseUqResponse(collection, sourceName, startIndex);
-            else
-            {
-                MessageBox.Show("The selected row does not start with any of the expected headers.\n" +
-                    "Please select the first row of the message.",
-                    "Parse Message", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-        }
-
-        /// <summary>
-        /// Parsa la risposta UQ? a partire dalla riga selezionata dall'utente.
-        /// Raccoglie la riga selezionata e tutte le successive contigue fino
-        /// a un messaggio di sistema o un altro comando.
-        /// </summary>
-        private void ParseUqResponse(ObservableCollection<SerialMessage> collection,
-            string sourceName, int startIndex)
-        {
-            var selectedMessage = collection[startIndex];
-
-            // Ricostruisce la risposta dalla riga selezionata in poi
-            var uqFragments = new List<string>();
-
-            // Primo frammento: rimuovi "U,"
-            string firstFragment = selectedMessage.Message.Trim()[2..];
-            uqFragments.Add(firstFragment);
-
-            // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
-            for (int i = startIndex + 1; i < collection.Count; i++)
-            {
-                string msg = collection[i].Message.Trim();
-
-                // Interrompi se trovi un comando inviato, un errore di sistema, o un'altra risposta U,
-                if (msg.StartsWith("[TX]") ||
-                    msg.StartsWith("[SYSTEM]") ||
-                    msg.StartsWith("[ERROR]") ||
-                    msg.StartsWith("U,"))
-                {
-                    break;
-                }
-
-                uqFragments.Add(msg);
-            }
-
-            try
-            {
-                // Concatena tutti i frammenti
-                var sb = new StringBuilder();
-                for (int i = 0; i < uqFragments.Count; i++)
-                {
-                    string fragment = uqFragments[i];
-
-                    // Aggiungi virgola di giunzione se necessario
-                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
-                    {
-                        sb.Append(',');
-                    }
-
-                    sb.Append(fragment);
-                }
-
-                string fullPayload = sb.ToString();
-
-                // Splitta per virgole
-                var rawValues = fullPayload.Split([','], StringSplitOptions.RemoveEmptyEntries);
-
-                // Trim e filtra
-                var values = new List<string>();
-                foreach (var v in rawValues)
-                {
-                    string trimmed = v.Trim();
-                    if (!string.IsNullOrWhiteSpace(trimmed))
-                        values.Add(trimmed);
-                }
-
-                // Apri dialog
-                var dialog = new StatusDialog(sourceName, UQFieldNames, values)
-                {
-                    Owner = this
-                };
-                dialog.ShowDialog();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-
-        // ==================== DOUBLE CLICK: APERTURA DIALOG MULTILINEA ====================
-
-        private void TxtStationCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            OpenCmdLinesDialog(spStation, txtStationCommand, stationMessages);
-        }
-
-        private void TxtVehicleCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            OpenCmdLinesDialog(spVehicle, txtVehicleCommand, vehicleMessages);
-        }
-
-        /// <summary>
-        /// Apre il dialog multi-linea e, se confermato, invia i comandi in sequenza con ritardo.
-        /// </summary>
-        private void OpenCmdLinesDialog(SerialPort port, TextBox associatedTextBox,
-            ObservableCollection<SerialMessage> messageCollection)
-        {
-            var dialog = new CmdLinesDialog
-            {
-                Owner = this
-            };
-
-            // Pre-popola con il contenuto attuale della TextBox (se presente)
-            if (!string.IsNullOrWhiteSpace(associatedTextBox.Text))
-            {
-                dialog.txtCmdLines.Text = associatedTextBox.Text;
-            }
-
-            if (dialog.ShowDialog() == true)
-            {
-                // Avvia l'invio sequenziale in background per non bloccare la UI
-                _ = SendCommandsSequenceAsync(port, dialog.CmdLines, dialog.CmdDelay,
-                    messageCollection);
-            }
-        }
-
-        /// <summary>
-        /// Invia una sequenza di comandi con ritardo specificato tra uno e l'altro.
-        /// Eseguito in background per non bloccare l'interfaccia utente.
-        /// </summary>
-        private async System.Threading.Tasks.Task SendCommandsSequenceAsync(
-            SerialPort port,
-            List<string> commands,
-            int delayMs,
-            ObservableCollection<SerialMessage> messageCollection)
-        {
-            if (!port.IsOpen)
-            {
-                uiDispatcher.Invoke(() =>
-                {
-                    AppendMessage(messageCollection, "[ERROR] Porta non connessa — sequenza annullata.", false);
-                });
-                return;
-            }
-
-            uiDispatcher.Invoke(() =>
-            {
-                AppendMessage(messageCollection, $"[SYSTEM] Starting sequence of {commands.Count} commands (delay: {delayMs}ms)", false);
-            });
-
-            for (int i = 0; i < commands.Count; i++)
-            {
-                string cmd = commands[i].Trim();
-
-                if (string.IsNullOrEmpty(cmd))
-                    continue;
-
-                // Verifica connessione ancora attiva
-                if (!port.IsOpen)
-                {
-                    uiDispatcher.Invoke(() =>
-                    {
-                        AppendMessage(messageCollection, "[ERROR] Connessione persa durante la sequenza.", false);
-                    });
-                    return;
-                }
-
-                try
-                {
-                    string cmdWithNewline = cmd.EndsWith("\r\n") ? cmd : cmd + "\r\n";
-                    port.Write(cmdWithNewline);
-
-                    uiDispatcher.Invoke(() =>
-                    {
-                        AppendMessage(messageCollection, $"[TX] [{i + 1}/{commands.Count}] {cmd}", true);
-                    });
-                }
-                catch (Exception ex)
-                {
-                    uiDispatcher.Invoke(() =>
-                    {
-                        AppendMessage(messageCollection, $"[ERROR] Command {i + 1} failed: {ex.Message}", false);
-                    });
-                    return;
-                }
-
-                // Ritardo prima del prossimo comando (non dopo l'ultimo)
-                if (i < commands.Count - 1 && delayMs > 0)
-                {
-                    await System.Threading.Tasks.Task.Delay(delayMs);
-                }
-            }
-
-            uiDispatcher.Invoke(() =>
-            {
-                AppendMessage(messageCollection, $"[SYSTEM] Sequence completed ({commands.Count} commands sent)", false);
-            });
+            hwndSource.AddHook(WndProc);
+            deviceNotificationHandle = DeviceNotificationNative.Register(hwndSource.Handle);
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             try
             {
+                deviceChangeDebounceTimer.Stop();
+
+                if (deviceNotificationHandle != IntPtr.Zero)
+                {
+                    DeviceNotificationNative.Unregister(deviceNotificationHandle);
+                    deviceNotificationHandle = IntPtr.Zero;
+                }
+                hwndSource?.RemoveHook(WndProc);
+
                 if (spStation.IsOpen) spStation.Close();
                 if (spVehicle.IsOpen) spVehicle.Close();
                 spStation.Dispose();
@@ -790,6 +941,7 @@ namespace WLESS_CHRG_CTRL
             base.OnClosing(e);
         }
 
+        // ==================== CONTEXT MENU: PARSE MESSAGE RESPONSE ====================
         private void Vehicle_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             MenuParseVehicle.IsEnabled = lvVehicleMessages.SelectedItem != null;
@@ -802,6 +954,52 @@ namespace WLESS_CHRG_CTRL
             MenuParseStation.IsEnabled = lvStationMessages.SelectedItem != null;
             MenuSaveStation.IsEnabled = lvStationMessages.Items.Count > 0;
             MenuClearStation.IsEnabled = lvStationMessages.Items.Count > 0;
+        }
+
+        private void MenuParseStation_Click(object sender, RoutedEventArgs e)
+        {
+            ParseResponse(stationMessages, lvStationMessages, "Station");
+        }
+
+        private void MenuParseVehicle_Click(object sender, RoutedEventArgs e)
+        {
+            ParseResponse(vehicleMessages, lvVehicleMessages, "Vehicle");
+        }
+
+        private void MenuClearStation_Click(object sender, RoutedEventArgs e)
+        {
+            stationMessages.Clear();
+            gvcStationMessage.Width = 380;
+            txtStatus.Text = "Station messages cleared";
+        }
+
+        private void MenuClearVehicle_Click(object sender, RoutedEventArgs e)
+        {
+            vehicleMessages.Clear();
+            gvcVehicleMessage.Width = 380;
+            txtStatus.Text = "Vehicle messages cleared";
+        }
+
+        private void MenuSaveStation_Click(object sender, RoutedEventArgs e)
+        {
+            SaveMessagesToFile(stationMessages, "Station");
+        }
+
+        private void MenuSaveVehicle_Click(object sender, RoutedEventArgs e)
+        {
+            SaveMessagesToFile(vehicleMessages, "Vehicle");
+        }
+
+        // ==================== DOUBLE CLICK: MULTILINE DIALOG OPENING ====================
+
+        private void TxtStationCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            OpenCmdLinesDialog(spStation, txtStationCommand, stationMessages);
+        }
+
+        private void TxtVehicleCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            OpenCmdLinesDialog(spVehicle, txtVehicleCommand, vehicleMessages);
         }
 
         // ==================== MENU: SETTINGS ====================
@@ -834,6 +1032,7 @@ namespace WLESS_CHRG_CTRL
                 }
             }
         }
+        
         // ==================== MENU: EXIT ====================
 
         private void MenuExit_Click(object sender, RoutedEventArgs e)
