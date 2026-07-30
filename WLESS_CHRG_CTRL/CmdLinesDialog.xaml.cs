@@ -27,7 +27,7 @@ namespace WLESS_CHRG_CTRL
             // Parsa il delay
             if (nudDelay.Value is null || nudDelay.Value < 0)
             {
-                MessageBox.Show("Inserisci un valore di delay valido (numero intero >= 0).",
+                MessageBox.Show("Insert a valid delay value (positive integer).",
                     "Invalid Delay", MessageBoxButton.OK, MessageBoxImage.Warning);
                 nudDelay.Focus();
                 return;
@@ -42,7 +42,7 @@ namespace WLESS_CHRG_CTRL
 
             if (lines.Count == 0)
             {
-                MessageBox.Show("Inserisci almeno un comando.",
+                MessageBox.Show("Insert at least one command.",
                     "No Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
                 txtCmdLines.Focus();
                 return;

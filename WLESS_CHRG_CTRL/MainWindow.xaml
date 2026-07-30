@@ -65,14 +65,14 @@
                             <ComboBox x:Name="cbStationPort" 
                                       Width="120" 
                                       VerticalAlignment="Center"
-                                      ToolTip="Seleziona la porta seriale della stazione"/>
+                                      ToolTip="Select station serial port"/>
                             <Ellipse x:Name="ledStation" 
                                      Width="14" 
                                      Height="14" 
                                      Fill="Gray" 
                                      Margin="10,0,0,0" 
                                      VerticalAlignment="Center"
-                                     ToolTip="Stato connessione stazione"/>
+                                     ToolTip="Station connection status"/>
                         </StackPanel>
                         <Label Grid.Row="1" 
                                x:Name="lblStationRole" 
@@ -115,11 +115,11 @@
                                      Fill="Gray" 
                                      Margin="0,0,10,0" 
                                      VerticalAlignment="Center"
-                                     ToolTip="Stato connessione veicolo"/>
+                                     ToolTip="Vehicle connection status"/>
                             <ComboBox x:Name="cbVehiclePort" 
                                       Width="120" 
                                       VerticalAlignment="Center"
-                                      ToolTip="Seleziona la porta seriale del veicolo"/>
+                                      ToolTip="Select vehicle serial port"/>
                             <Label Content=":VEHICLE PORT" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Label Grid.Row="1" 
@@ -170,7 +170,7 @@
                                   ScrollViewer.VerticalScrollBarVisibility="Auto" ContextMenuOpening="Station_ContextMenuOpening">
                             <ListView.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="Parse status..." Click="MenuParseStation_Click" Name="MenuParseStation"/>
+                                    <MenuItem Header="Parse message..." Click="MenuParseStation_Click" Name="MenuParseStation"/>
                                     <Separator/>
                                     <MenuItem Header="Clear All" Click="MenuClearStation_Click" Name="MenuClearStation"/>
                                     <Separator/>
@@ -212,7 +212,7 @@
                                   ScrollViewer.VerticalScrollBarVisibility="Auto" ContextMenuOpening="Vehicle_ContextMenuOpening">
                             <ListView.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem Header="Parse status..." Click="MenuParseVehicle_Click" Name="MenuParseVehicle"/>
+                                    <MenuItem Header="Parse message..." Click="MenuParseVehicle_Click" Name="MenuParseVehicle"/>
                                     <Separator/>
                                     <MenuItem Header="Clear All" Click="MenuClearVehicle_Click" Name="MenuClearVehicle"/>
                                     <Separator/>
@@ -240,24 +240,24 @@
 
                 <!-- Station Command -->
                 <StackPanel Grid.Column="0">
-                    <Label Content="Station Command (premi INVIO per inviare):"/>
+                    <Label Content="Station Command (press ENTER to send):"/>
                     <TextBox x:Name="txtStationCommand" 
                              Height="30" 
                              VerticalContentAlignment="Center"
                              KeyDown="TxtStationCommand_KeyDown"
                              MouseDoubleClick="TxtStationCommand_MouseDoubleClick"
-                             ToolTip="Doppio click per aprire editor multi-linea / INVIO per inviare singolo comando"/>
+                             ToolTip="Double click to open multi-line editor / ENTER to send single command"/>
                 </StackPanel>
 
                 <!-- Vehicle Command -->
                 <StackPanel Grid.Column="2">
-                    <Label Content="Vehicle Command (premi INVIO per inviare):" HorizontalAlignment="Right"/>
+                    <Label Content="Vehicle Command (press ENTER to send):" HorizontalAlignment="Right"/>
                     <TextBox x:Name="txtVehicleCommand" 
                              Height="30" 
                              VerticalContentAlignment="Center"
                              KeyDown="TxtVehicleCommand_KeyDown"
                              MouseDoubleClick="TxtVehicleCommand_MouseDoubleClick"
-                             ToolTip="Doppio click per aprire editor multi-linea / INVIO per inviare singolo comando"/>
+                             ToolTip="Double click to open multi-line editor / ENTER to send single command"/>
                 </StackPanel>
             </Grid>
 
@@ -265,7 +265,7 @@
             <StatusBar Grid.Row="4" 
                        Margin="0,10,0,0">
                 <StatusBarItem>
-                    <TextBlock x:Name="txtStatus" Text="Pronto - Seleziona le porte seriali e clicca CONNECT"/>
+                    <TextBlock x:Name="txtStatus" Text="Ready - Select serial ports and click CONNECT"/>
                 </StatusBarItem>
             </StatusBar>
         </Grid>

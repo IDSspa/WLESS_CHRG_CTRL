@@ -1,7 +1,9 @@
 ﻿using System;
 using System.IO.Ports;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 
 namespace WLESS_CHRG_CTRL
 {
@@ -14,42 +16,19 @@ namespace WLESS_CHRG_CTRL
         public StopBits StopBitsValue { get; private set; } = StopBits.One;
         public bool IsApplied { get; private set; } = false;
 
-        // Valori disponibili
-        private static readonly int[] BaudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
-        private static readonly int[] DataBitsValues = [5, 6, 7, 8];
-        private static readonly string[] ParityNames = ["None", "Odd", "Even", "Mark", "Space"];
-        private static readonly string[] StopBitsNames = ["None", "One", "Two", "OnePointFive"];
+        // Evita che gli SelectionChanged sparino durante LoadCurrentSettings()
+        private readonly bool isInitializing = true;
 
         public SettingsDialog()
         {
             InitializeComponent();
-            InitializeComboBoxes();
             LoadCurrentSettings();
-        }
-
-        private void InitializeComboBoxes()
-        {
-            // Baud Rate
-            foreach (var rate in BaudRates)
-                cbBaudRate.Items.Add(rate.ToString());
-            cbBaudRate.Items.Add("Custom...");
-
-            // Data Bits
-            foreach (var bits in DataBitsValues)
-                cbDataBits.Items.Add(bits.ToString());
-
-            // Parity
-            foreach (var p in ParityNames)
-                cbParity.Items.Add(p);
-
-            // Stop Bits
-            foreach (var s in StopBitsNames)
-                cbStopBits.Items.Add(s);
+            isInitializing = false;
         }
 
         private void LoadCurrentSettings()
         {
-            var settings = WLESS_CHRG_CTRL.Properties.Settings.Default;
+            var settings = Properties.Settings.Default;
 
             // Banned Ports
             txtBannedPorts.Text = settings.BannedPorts ?? string.Empty;
@@ -65,14 +44,26 @@ namespace WLESS_CHRG_CTRL
             string dataBitsStr = settings.SerialDataBits.ToString();
             cbDataBits.SelectedItem = dataBitsStr;
 
-            // Parity
-            string parityStr = settings.SerialParity ?? "None";
-            cbParity.SelectedItem = parityStr;
+            // Parity / Stop Bits: selezioniamo direttamente il valore enum
+            cbParity.SelectedItem = Enum.TryParse<Parity>(settings.SerialParity, out var parity)
+                ? parity : Parity.None;
+            cbStopBits.SelectedItem = Enum.TryParse<StopBits>(settings.SerialStopBits, out var stopBits)
+                ? stopBits : StopBits.One;
 
-            // Stop Bits
-            string stopBitsStr = settings.SerialStopBits ?? "One";
-            cbStopBits.SelectedItem = stopBitsStr;
+            UpdateConfigDisplay();
+        }
 
+        // Aggiorna live la scritta "Current: ..." ogni volta che l'utente cambia un ComboBox
+        private void Cb_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (isInitializing) return;
+            UpdateConfigDisplay();
+        }
+
+        // Aggiorna live anche mentre l'utente digita un baud rate custom
+        private void CbBaudRate_KeyUp(object sender, KeyEventArgs e)
+        {
+            if (isInitializing) return;
             UpdateConfigDisplay();
         }
 
@@ -80,27 +71,25 @@ namespace WLESS_CHRG_CTRL
         {
             string baud = cbBaudRate.Text;
             string data = cbDataBits.SelectedItem?.ToString() ?? "8";
-            string parity = cbParity.SelectedItem?.ToString() ?? "N";
-            string stop = cbStopBits.SelectedItem?.ToString() ?? "1";
+            Parity parity = cbParity.SelectedItem is Parity p ? p : Parity.None;
+            StopBits stop = cbStopBits.SelectedItem is StopBits s ? s : StopBits.One;
 
-            // Abbreviazione parity per display
             string parityAbbr = parity switch
             {
-                "None" => "N",
-                "Odd" => "O",
-                "Even" => "E",
-                "Mark" => "M",
-                "Space" => "S",
+                Parity.None => "N",
+                Parity.Odd => "O",
+                Parity.Even => "E",
+                Parity.Mark => "M",
+                Parity.Space => "S",
                 _ => "N"
             };
 
-            // Abbreviazione stop bits
             string stopAbbr = stop switch
             {
-                "None" => "0",
-                "One" => "1",
-                "Two" => "2",
-                "OnePointFive" => "1.5",
+                StopBits.None => "0",
+                StopBits.One => "1",
+                StopBits.Two => "2",
+                StopBits.OnePointFive => "1.5",
                 _ => "1"
             };
 
@@ -120,7 +109,8 @@ namespace WLESS_CHRG_CTRL
                 return;
 
             IsApplied = true;
-            txtStatus.Text = "Settings applied (not saved yet)";
+            DialogResult = true;
+            Close();
         }
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
@@ -128,7 +118,7 @@ namespace WLESS_CHRG_CTRL
             if (!ValidateAndApply())
                 return;
 
-            WLESS_CHRG_CTRL.Properties.Settings.Default.Save();
+            Properties.Settings.Default.Save();
             IsApplied = true;
             DialogResult = true;
             Close();
@@ -154,8 +144,8 @@ namespace WLESS_CHRG_CTRL
                 return false;
             }
 
-            // Parse Parity
-            if (cbParity.SelectedItem == null || !Enum.TryParse<Parity>(cbParity.SelectedItem.ToString(), out Parity parity))
+            // Parity / StopBits: il ComboBox garantisce già un valore enum valido
+            if (cbParity.SelectedItem is not Parity parity)
             {
                 MessageBox.Show("Select valid parity.", "Validation Error",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -163,8 +153,7 @@ namespace WLESS_CHRG_CTRL
                 return false;
             }
 
-            // Parse Stop Bits
-            if (cbStopBits.SelectedItem == null || !Enum.TryParse<StopBits>(cbStopBits.SelectedItem.ToString(), out StopBits stopBits))
+            if (cbStopBits.SelectedItem is not StopBits stopBits)
             {
                 MessageBox.Show("Select valid stop bits.", "Validation Error",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -172,31 +161,43 @@ namespace WLESS_CHRG_CTRL
                 return false;
             }
 
+            // Validate DataBits/StopBits combination (regole imposte da System.IO.Ports.SerialPort)
+            if (dataBits == 5 && stopBits == StopBits.Two)
+            {
+                MessageBox.Show("5 data bits is not compatible with 2 stop bits.", "Validation Error",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                cbStopBits.Focus();
+                return false;
+            }
+            if (dataBits != 5 && stopBits == StopBits.OnePointFive)
+            {
+                MessageBox.Show("1.5 stop bits requires 5 data bits.", "Validation Error",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                cbStopBits.Focus();
+                return false;
+            }
+
+            // Normalizza Banned Ports (trim + rimuovi duplicati/vuoti)
+            var normalizedPorts = txtBannedPorts.Text
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
             // Apply to properties
-            BannedPortsValue = txtBannedPorts.Text ?? string.Empty;
+            BannedPortsValue = string.Join(";", normalizedPorts);
             BaudRate = baudRate;
             DataBits = dataBits;
             ParityValue = parity;
             StopBitsValue = stopBits;
 
             // Apply to Settings
-            var settings = WLESS_CHRG_CTRL.Properties.Settings.Default;
-            settings.BannedPorts = BannedPortsValue;
-            settings.SerialBaudRate = baudRate;
-            settings.SerialDataBits = dataBits;
-            settings.SerialParity = parity.ToString();
-            settings.SerialStopBits = stopBits.ToString();
+            Properties.Settings.Default.BannedPorts = BannedPortsValue;
+            Properties.Settings.Default.SerialBaudRate = baudRate;
+            Properties.Settings.Default.SerialDataBits = dataBits;
+            Properties.Settings.Default.SerialParity = parity.ToString();
+            Properties.Settings.Default.SerialStopBits = stopBits.ToString();
 
             UpdateConfigDisplay();
             return true;
-        }
-
-        // Riferimento status bar
-        private TextBlock txtStatus;
-
-        public void SetStatusReference(TextBlock statusTextBlock)
-        {
-            txtStatus = statusTextBlock;
         }
     }
 }
