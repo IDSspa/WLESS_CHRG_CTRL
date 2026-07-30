@@ -560,10 +560,91 @@ namespace WLESS_CHRG_CTRL
             }
         }
 
+        /// <summary>
+        /// Parsa la risposta HFC a partire dalla riga selezionata dall'utente.
+        /// Raccoglie la riga selezionata e tutte le successive contigue fino
+        /// a un messaggio di sistema o un altro comando, poi normalizza i campi
+        /// nella forma "CHIAVE=valore" tenendo solo il valore (es. "F=0" -> "0").
+        /// </summary>
         private void ParseHFCResponse(ObservableCollection<SerialMessage> collection, string sourceName, int startIndex)
-        { 
-        }
+        {
+            var selectedMessage = collection[startIndex];
 
+            // Ricostruisce la risposta dalla riga selezionata in poi
+            var hfcFragments = new List<string>();
+
+            // Primo frammento: rimuovi "H,"
+            string firstFragment = selectedMessage.Message.Trim()[2..];
+            hfcFragments.Add(firstFragment);
+
+            // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
+            for (int i = startIndex + 1; i < collection.Count; i++)
+            {
+                string msg = collection[i].Message.Trim();
+
+                // Interrompi se trovi un comando inviato, un errore di sistema, o un'altra risposta H,
+                if (msg.StartsWith("[TX]") ||
+                    msg.StartsWith("[SYSTEM]") ||
+                    msg.StartsWith("[ERROR]") ||
+                    msg.StartsWith("H,"))
+                {
+                    break;
+                }
+
+                hfcFragments.Add(msg);
+            }
+
+            try
+            {
+                // Concatena tutti i frammenti
+                var sb = new StringBuilder();
+                for (int i = 0; i < hfcFragments.Count; i++)
+                {
+                    string fragment = hfcFragments[i];
+
+                    // Aggiungi virgola di giunzione se necessario
+                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append(fragment);
+                }
+
+                string fullPayload = sb.ToString();
+
+                // Splitta per virgole
+                var rawValues = fullPayload.Split([','], StringSplitOptions.RemoveEmptyEntries);
+
+                // Trim, rimuovi l'eventuale "ID=" (es. "F=0" -> "0", "LAST_mpu=450" -> "450") e filtra i vuoti
+                var values = new List<string>();
+                foreach (var v in rawValues)
+                {
+                    string trimmed = v.Trim();
+                    if (string.IsNullOrWhiteSpace(trimmed))
+                        continue;
+
+                    int eqIndex = trimmed.IndexOf('=');
+                    if (eqIndex >= 0)
+                        trimmed = trimmed[(eqIndex + 1)..].Trim();
+
+                    if (!string.IsNullOrWhiteSpace(trimmed))
+                        values.Add(trimmed);
+                }
+
+                // Apri dialog
+                var dialog = new StatusDialog(sourceName, HFCFieldNames, values)
+                {
+                    Owner = this
+                };
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
         /// <summary>
         /// Apre il dialog multi-linea e, se confermato, invia i comandi in sequenza con ritardo.
         /// </summary>

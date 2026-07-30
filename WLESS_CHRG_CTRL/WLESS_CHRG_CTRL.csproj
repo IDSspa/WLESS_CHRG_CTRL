@@ -6,6 +6,7 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>WLESS_CHRG_CTRL</RootNamespace>
     <AssemblyName>WLESS_CHRG_CTRL</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
