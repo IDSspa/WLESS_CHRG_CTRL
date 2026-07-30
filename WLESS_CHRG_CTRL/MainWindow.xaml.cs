@@ -23,6 +23,9 @@ namespace WLESS_CHRG_CTRL
 
     public partial class MainWindow : Window
     {
+        private bool isStationConnected = false;
+        private bool isVehicleConnected = false;
+
         private readonly SerialPort spStation = new();
         private readonly SerialPort spVehicle = new();
 
@@ -32,7 +35,6 @@ namespace WLESS_CHRG_CTRL
         private static readonly Brush DefaultTextColor = Brushes.Black;
         private static readonly Brush TxTextColor = Brushes.Green;
 
-        private bool isConnected = false;
         private readonly Dispatcher uiDispatcher;
 
         /// <summary>
@@ -357,64 +359,39 @@ namespace WLESS_CHRG_CTRL
             }
         }
 
-        private void BtnConnect_Click(object sender, RoutedEventArgs e)
+        private void BtnStationConnect_Click(object sender, RoutedEventArgs e)
         {
-            if (!isConnected)
+            if (!isStationConnected)
             {
-                if (cbStationPort.SelectedItem == null && cbVehiclePort.SelectedItem == null)
+                if (cbStationPort.SelectedItem == null)
                 {
-                    MessageBox.Show("Select at least one serial port!", "Error",
+                    MessageBox.Show("Select a serial port for Station!", "Error",
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
                 string stationPort = cbStationPort.SelectedItem.ToString()!;
-                string vehiclePort = cbVehiclePort.SelectedItem.ToString()!;
-
-                if (stationPort == vehiclePort)
-                {
-                    MessageBox.Show("The two serial ports must be different!", "Error",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
 
                 try
                 {
-                    string stationConnected = "None";
-                    string vehicleConnected = "None";
+                    spStation.PortName = stationPort;
+                    spStation.Open();
 
-                    if (cbStationPort.SelectedItem != null && !string.IsNullOrWhiteSpace(cbStationPort.SelectedItem.ToString()))
-                    {
-                        stationConnected = spStation.PortName = stationPort;
-                        spStation.Open();
+                    ledStation.Fill = Brushes.LimeGreen;
+                    cbStationPort.IsEnabled = false;
+                    AppendMessage(stationMessages, "[SYSTEM] Connected to " + stationPort, false);
 
-                        ledStation.Fill = Brushes.LimeGreen;
-                        cbStationPort.IsEnabled = false;
-                        AppendMessage(stationMessages, "[SYSTEM] Connected to " + stationPort, false);
-                    }
+                    isStationConnected = true;
+                    btnStationConnect.Content = "DISCONNECT";
 
-                    if (cbVehiclePort.SelectedItem != null && !string.IsNullOrWhiteSpace(cbVehiclePort.SelectedItem.ToString()))
-                    {
-                        vehicleConnected = spVehicle.PortName = vehiclePort;
-                        spVehicle.Open();
-                        
-                        ledVehicle.Fill = Brushes.LimeGreen;
-                        cbVehiclePort.IsEnabled = false;
-                        AppendMessage(vehicleMessages, "[SYSTEM] Connected to " + vehiclePort, false);
-                    }
-
-                    isConnected = true;
-                    btnConnect.Content = "DISCONNECT";
-
-                    txtStatus.Text = $"Connected - Station: {stationConnected}, Vehicle: {vehicleConnected}";
+                    txtStatus.Text = $"Station connected - {stationPort}";
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error connecting: {ex.Message}", "Error",
+                    MessageBox.Show($"Error connecting Station: {ex.Message}", "Error",
                         MessageBoxButton.OK, MessageBoxImage.Error);
 
                     if (spStation.IsOpen) spStation.Close();
-                    if (spVehicle.IsOpen) spVehicle.Close();
                 }
             }
             else
@@ -422,29 +399,77 @@ namespace WLESS_CHRG_CTRL
                 try
                 {
                     if (spStation.IsOpen) spStation.Close();
-                    if (spVehicle.IsOpen) spVehicle.Close();
                 }
                 catch (Exception ex)
                 {
                     AppendMessage(stationMessages, $"[ERROR] Disconnect: {ex.Message}", false);
                 }
 
-                isConnected = false;
-                btnConnect.Content = "CONNECT";
-
+                isStationConnected = false;
+                btnStationConnect.Content = "CONNECT";
                 ledStation.Fill = Brushes.Gray;
-                ledVehicle.Fill = Brushes.Gray;
-
                 cbStationPort.IsEnabled = true;
-                cbVehiclePort.IsEnabled = true;
 
-                txtStatus.Text = "Disconnected - Ready for new connection";
-
+                txtStatus.Text = "Station disconnected";
                 AppendMessage(stationMessages, "[SYSTEM] Disconnected", false);
-                AppendMessage(vehicleMessages, "[SYSTEM] Disconnected", false);
             }
         }
 
+        private void BtnVehicleConnect_Click(object sender, RoutedEventArgs e)
+        {
+            if (!isVehicleConnected)
+            {
+                if (cbVehiclePort.SelectedItem == null)
+                {
+                    MessageBox.Show("Select a serial port for Vehicle!", "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                string vehiclePort = cbVehiclePort.SelectedItem.ToString()!;
+
+                try
+                {
+                    spVehicle.PortName = vehiclePort;
+                    spVehicle.Open();
+
+                    ledVehicle.Fill = Brushes.LimeGreen;
+                    cbVehiclePort.IsEnabled = false;
+                    AppendMessage(vehicleMessages, "[SYSTEM] Connected to " + vehiclePort, false);
+
+                    isVehicleConnected = true;
+                    btnVehicleConnect.Content = "DISCONNECT";
+
+                    txtStatus.Text = $"Vehicle connected - {vehiclePort}";
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error connecting Vehicle: {ex.Message}", "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+
+                    if (spVehicle.IsOpen) spVehicle.Close();
+                }
+            }
+            else
+            {
+                try
+                {
+                    if (spVehicle.IsOpen) spVehicle.Close();
+                }
+                catch (Exception ex)
+                {
+                    AppendMessage(vehicleMessages, $"[ERROR] Disconnect: {ex.Message}", false);
+                }
+
+                isVehicleConnected = false;
+                btnVehicleConnect.Content = "CONNECT";
+                ledVehicle.Fill = Brushes.Gray;
+                cbVehiclePort.IsEnabled = true;
+
+                txtStatus.Text = "Vehicle disconnected";
+                AppendMessage(vehicleMessages, "[SYSTEM] Disconnected", false);
+            }
+        }
         private void TxtStationCommand_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
@@ -796,7 +821,7 @@ namespace WLESS_CHRG_CTRL
                 ConfigureSerialPort(spVehicle);
 
                 // Se connessi, mostra avviso che serve riconnessione
-                if (isConnected)
+                if (isStationConnected || isVehicleConnected)
                 {
                     txtStatus.Text = "Settings applied. Disconnect and reconnect to apply new serial parameters.";
                     MessageBox.Show("Serial settings changed. Please disconnect and reconnect to apply the new parameters.",
@@ -809,7 +834,6 @@ namespace WLESS_CHRG_CTRL
                 }
             }
         }
-
         // ==================== MENU: EXIT ====================
 
         private void MenuExit_Click(object sender, RoutedEventArgs e)

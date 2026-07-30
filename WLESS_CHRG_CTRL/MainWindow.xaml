@@ -44,7 +44,7 @@
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="10"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
@@ -56,6 +56,7 @@
                         CornerRadius="4">
                     <Grid>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -74,27 +75,26 @@
                                      VerticalAlignment="Center"
                                      ToolTip="Station connection status"/>
                         </StackPanel>
-                        <Label Grid.Row="1" 
+                        <Button Grid.Row="1" 
+                                x:Name="btnStationConnect" 
+                                Content="CONNECT" 
+                                Click="BtnStationConnect_Click"
+                                HorizontalAlignment="Left"
+                                Padding="20,5"
+                                Margin="0,0,0,8"
+                                ToolTip="Open/Close Station connection"/>
+                        <Label Grid.Row="2" 
                                x:Name="lblStationRole" 
                                Content="" 
                                Foreground="DodgerBlue"
-                               FontSize="11"
+                               FontSize="11"    
                                Margin="0,0,0,4"/>
-                        <TextBlock Grid.Row="2" 
+                        <TextBlock Grid.Row="3" 
                                    Text="Config: 115200, 8, N, 1" 
                                    Foreground="Gray" 
                                    FontSize="10"/>
                     </Grid>
                 </Border>
-
-                <!-- Pulsante Connect Centrale -->
-                <Button Grid.Column="1" 
-                        x:Name="btnConnect" 
-                        Content="CONNECT" 
-                        Click="BtnConnect_Click"
-                        Margin="20,0"
-                        VerticalAlignment="Center"
-                        ToolTip="Apri/Chiudi le connessioni seriali"/>
 
                 <!-- Vehicle Port -->
                 <Border Grid.Column="2" 
@@ -104,6 +104,7 @@
                         CornerRadius="4">
                     <Grid>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -122,14 +123,22 @@
                                       ToolTip="Select vehicle serial port"/>
                             <Label Content=":VEHICLE PORT" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <Label Grid.Row="1" 
+                        <Button Grid.Row="1" 
+                                x:Name="btnVehicleConnect" 
+                                Content="CONNECT" 
+                                Click="BtnVehicleConnect_Click"
+                                HorizontalAlignment="Right"
+                                Padding="20,5"
+                                Margin="0,0,0,8"
+                                ToolTip="Open/Close Vehicle connection"/>
+                        <Label Grid.Row="2" 
                                x:Name="lblVehicleRole" 
                                Content="" 
                                Foreground="DodgerBlue"
                                FontSize="11"
                                HorizontalAlignment="Right"
                                Margin="0,0,0,4"/>
-                        <TextBlock Grid.Row="2" 
+                        <TextBlock Grid.Row="3" 
                                    Text="Config: 115200, 8, N, 1" 
                                    Foreground="Gray" 
                                    FontSize="10"
