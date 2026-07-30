@@ -38,7 +38,7 @@ namespace WLESS_CHRG_CTRL
         private static readonly Brush DefaultTextColor = Brushes.Black;
         private static readonly Brush TxTextColor = Brushes.Green;
         private IntPtr deviceNotificationHandle = IntPtr.Zero;
-        private HwndSource? hwndSource;
+        private HwndSource hwndSource;
         private readonly DispatcherTimer deviceChangeDebounceTimer;
         private readonly Dispatcher uiDispatcher;
 
@@ -125,6 +125,16 @@ namespace WLESS_CHRG_CTRL
             "UNIPD_wptHfcManualPhaseEnable",
             "UNIPD_wptHfcManualPhase_pu",
             "UNIPD_wptHfcRemoteRoleInvalidCycles"
+        ];
+
+        private static readonly List<string> CAPFieldNames =
+        [
+            "armed",
+            "frozen",
+            "count",
+            "length",
+            "decimation",
+            "trigger_reason"
         ];
 
         public MainWindow()
@@ -471,6 +481,8 @@ namespace WLESS_CHRG_CTRL
                 ParseUqResponse(collection, sourceName, startIndex);
             else if (selectedMessage.Message.Trim().StartsWith("H,"))
                 ParseHFCResponse(collection, sourceName, startIndex);
+            else if (selectedMessage.Message.Trim().StartsWith("C,"))
+                ParseCAPResponse(collection, sourceName, startIndex);
             else
             {
                 MessageBox.Show("The selected row does not start with any of the expected headers.\n" +
@@ -645,6 +657,80 @@ namespace WLESS_CHRG_CTRL
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
+        private void ParseCAPResponse(ObservableCollection<SerialMessage> collection, string sourceName, int startIndex)
+        {
+            var selectedMessage = collection[startIndex];
+
+            // Ricostruisce la risposta dalla riga selezionata in poi
+            var uqFragments = new List<string>();
+
+            // Primo frammento: rimuovi "U,"
+            string firstFragment = selectedMessage.Message.Trim()[2..];
+            uqFragments.Add(firstFragment);
+
+            // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
+            for (int i = startIndex + 1; i < collection.Count; i++)
+            {
+                string msg = collection[i].Message.Trim();
+
+                // Interrompi se trovi un comando inviato, un errore di sistema, o un'altra risposta U,
+                if (msg.StartsWith("[TX]") ||
+                    msg.StartsWith("[SYSTEM]") ||
+                    msg.StartsWith("[ERROR]") ||
+                    msg.StartsWith("C,"))
+                {
+                    break;
+                }
+
+                uqFragments.Add(msg);
+            }
+
+            try
+            {
+                // Concatena tutti i frammenti
+                var sb = new StringBuilder();
+                for (int i = 0; i < uqFragments.Count; i++)
+                {
+                    string fragment = uqFragments[i];
+
+                    // Aggiungi virgola di giunzione se necessario
+                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
+                    {
+                        sb.Append(',');
+                    }
+
+                    sb.Append(fragment);
+                }
+
+                string fullPayload = sb.ToString();
+
+                // Splitta per virgole
+                var rawValues = fullPayload.Split([','], StringSplitOptions.RemoveEmptyEntries);
+
+                // Trim e filtra
+                var values = new List<string>();
+                foreach (var v in rawValues)
+                {
+                    string trimmed = v.Trim();
+                    if (!string.IsNullOrWhiteSpace(trimmed))
+                        values.Add(trimmed);
+                }
+
+                // Apri dialog
+                var dialog = new StatusDialog(sourceName, CAPFieldNames, values)
+                {
+                    Owner = this
+                };
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         /// <summary>
         /// Apre il dialog multi-linea e, se confermato, invia i comandi in sequenza con ritardo.
         /// </summary>
@@ -1004,16 +1090,17 @@ namespace WLESS_CHRG_CTRL
             gvcVehicleMessage.Width = 380;
         }
 
-        private void DeviceChangeDebounceTimer_Tick(object? sender, EventArgs e)
+        private void DeviceChangeDebounceTimer_Tick(object sender, EventArgs e)
         {
             deviceChangeDebounceTimer.Stop();
             PopulateSerialPorts();
             CheckForDisconnectedActivePorts();
         }
 
-        private void MainWindow_SourceInitialized(object? sender, EventArgs e)
+        private void MainWindow_SourceInitialized(object sender, EventArgs e)
         {
-            hwndSource = (HwndSource?)PresentationSource.FromVisual(this);
+            hwndSource = (HwndSource)PresentationSource.FromVisual(this);
+            
             if (hwndSource == null)
                 return;
 
@@ -1044,7 +1131,7 @@ namespace WLESS_CHRG_CTRL
             base.OnClosing(e);
         }
 
-        // ==================== CONTEXT MENU: PARSE MESSAGE RESPONSE ====================
+        // ==================== CONTEXT MENU ====================
         private void Vehicle_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             MenuParseVehicle.IsEnabled = lvVehicleMessages.SelectedItem != null;
@@ -1093,7 +1180,7 @@ namespace WLESS_CHRG_CTRL
             SaveMessagesToFile(vehicleMessages, "Vehicle");
         }
 
-        // ==================== DOUBLE CLICK: MULTILINE DIALOG OPENING ====================
+        // ==================== MULTILINE DIALOG OPENING ====================
 
         private void TxtStationCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
@@ -1105,7 +1192,7 @@ namespace WLESS_CHRG_CTRL
             OpenCmdLinesDialog(spVehicle, txtVehicleCommand, vehicleMessages);
         }
 
-        // ==================== MENU: SETTINGS ====================
+        // ==================== MAIN MENU ====================
 
         private void MenuSettings_Click(object sender, RoutedEventArgs e)
         {
@@ -1136,8 +1223,6 @@ namespace WLESS_CHRG_CTRL
             }
         }
         
-        // ==================== MENU: EXIT ====================
-
         private void MenuExit_Click(object sender, RoutedEventArgs e)
         {
             Close();
