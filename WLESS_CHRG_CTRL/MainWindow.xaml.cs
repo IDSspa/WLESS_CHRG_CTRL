@@ -103,6 +103,28 @@ namespace WLESS_CHRG_CTRL
 
         private static readonly List<string> HFCFieldNames =
         [
+            "CLLLC_tripFlag.CLLLC_TripFlag_Enum",
+            "CLLLC_hfcGanFaultActiveLow",
+            "CLLLC_pwmFrequency_Hz",
+            "CLLLC_pwmDutyPrimRef_pu",
+            "CLLLC_pwmPhaseShiftPrimLegsRef_pu",
+            "CLLLC_iTankModSensedRaw",
+            "CLLLC_iTankModSensed_pu",
+            "UNIPD_wptHfcActuatorFault",
+            "UNIPD_wptHfcPhaseLast_pu",
+            "UNIPD_wptHfcPhasePeak_pu",
+            "UNIPD_wptHfcPhaseTicksLast",
+            "UNIPD_wptHfcActiveCycles",
+            "UNIPD_wptHfcFaultVdc_Volts",
+            "UNIPD_wptHfcEpwm1TbphsRawLast",
+            "UNIPD_wptHfcEpwm2TbphsRawLast",
+            "UNIPD_wptHfcEpwm1TbprdLast",
+            "UNIPD_wptHfcEpwm2TbprdLast",
+            "UNIPD_wptHfcEpwm1TbctlLast",
+            "UNIPD_wptHfcEpwm2TbctlLast",
+            "UNIPD_wptHfcManualPhaseEnable",
+            "UNIPD_wptHfcManualPhase_pu",
+            "UNIPD_wptHfcRemoteRoleInvalidCycles"
         ];
 
         public MainWindow()
@@ -447,7 +469,7 @@ namespace WLESS_CHRG_CTRL
             // Verifica che la riga selezionata inizi con uno dei messaggi risposta validi (UQ?, U, ecc.)
             if (selectedMessage.Message.Trim().StartsWith("U,"))
                 ParseUqResponse(collection, sourceName, startIndex);
-            else if (selectedMessage.Message.Trim().StartsWith("HFC,"))
+            else if (selectedMessage.Message.Trim().StartsWith("H,"))
                 ParseHFCResponse(collection, sourceName, startIndex);
             else
             {
