@@ -507,8 +507,8 @@ namespace WLESS_CHRG_CTRL
             // Ricostruisce la risposta dalla riga selezionata in poi
             var uqFragments = new List<string>();
 
-            // Primo frammento: rimuovi "U,"
-            string firstFragment = selectedMessage.Message.Trim()[2..];
+            // Primo frammento: rimuovi "UQ,"
+            string firstFragment = selectedMessage.Message.Trim()[3..];
             uqFragments.Add(firstFragment);
 
             // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
@@ -586,8 +586,8 @@ namespace WLESS_CHRG_CTRL
             // Ricostruisce la risposta dalla riga selezionata in poi
             var hfcFragments = new List<string>();
 
-            // Primo frammento: rimuovi "H,"
-            string firstFragment = selectedMessage.Message.Trim()[2..];
+            // Primo frammento: rimuovi "HFC,"
+            string firstFragment = selectedMessage.Message.Trim()[4..];
             hfcFragments.Add(firstFragment);
 
             // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
@@ -666,8 +666,8 @@ namespace WLESS_CHRG_CTRL
             // Ricostruisce la risposta dalla riga selezionata in poi
             var uqFragments = new List<string>();
 
-            // Primo frammento: rimuovi "U,"
-            string firstFragment = selectedMessage.Message.Trim()[2..];
+            // Primo frammento: rimuovi "CAP,"
+            string firstFragment = selectedMessage.Message.Trim()[4..];
             uqFragments.Add(firstFragment);
 
             // Frammenti successivi: raccogli finché non trovi un messaggio di sistema o altro comando
