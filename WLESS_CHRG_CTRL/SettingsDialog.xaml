@@ -4,11 +4,12 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:ports="clr-namespace:System.IO.Ports;assembly=System.IO.Ports"
         Title="Settings" 
-        Height="440" Width="520"
-        MinHeight="370" MinWidth="450"
+        Height="480" Width="540"
+        MinHeight="420" MinWidth="480"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Background="White">
 
     <Window.Resources>
         <ObjectDataProvider x:Key="ParityValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
@@ -23,67 +24,66 @@
         </ObjectDataProvider>
     </Window.Resources>
 
-    <Grid Margin="15">
+    <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <!-- Banned ports card -->
             <RowDefinition Height="Auto"/>
+            <!-- Serial config card -->
             <RowDefinition Height="*"/>
+            <!-- Info + spacer -->
             <RowDefinition Height="Auto"/>
+            <!-- Status -->
             <RowDefinition Height="Auto"/>
+            <!-- Buttons -->
         </Grid.RowDefinitions>
 
-        <!-- Banned Ports -->
-        <Grid Grid.Row="0" Margin="0,0,0,15">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <Label Grid.Row="0" 
-                   Content="Banned Ports:" 
-                   FontWeight="Bold"/>
-            <TextBox Grid.Row="1" 
-                     x:Name="txtBannedPorts"
-                     Height="30"
-                     VerticalContentAlignment="Center"
-                     Margin="0,5,0,0"
-                     ToolTip="Enter port names to exclude, separated by semicolons"/>
-        </Grid>
-
-        <!-- Serial Settings -->
-        <Border Grid.Row="1" 
-                BorderBrush="Gray" 
-                BorderThickness="1" 
-                Padding="10" 
-                CornerRadius="4"
-                Margin="0,0,0,10">
+        <!-- ============ Banned Ports ============ -->
+        <Border Grid.Row="0" Style="{StaticResource CardBorder}" Margin="0,0,0,14">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="BANNED PORTS" Style="{StaticResource SectionCaption}"/>
+                <TextBox Grid.Row="1" 
+                         x:Name="txtBannedPorts"
+                         Style="{StaticResource ModernTextBox}"
+                         Margin="0,8,0,0"
+                         ToolTip="Enter port names to exclude, separated by semicolons"/>
+            </Grid>
+        </Border>
 
-                <Label Grid.Row="0" 
-                       Content="Serial Port Configuration" 
-                       FontWeight="Bold"
-                       Margin="0,0,0,8"/>
+        <!-- ============ Serial Port Configuration ============ -->
+        <Border Grid.Row="1" Style="{StaticResource CardBorder}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="SERIAL PORT CONFIGURATION" 
+                           Style="{StaticResource SectionCaption}" Margin="0,0,0,10"/>
 
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
 
-                    <!-- Baud Rate: lista statica, non cambia mai -->
-                    <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,8,0">
-                        <Label Content="Baud Rate:" FontSize="11"/>
+                    <!-- Baud Rate -->
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Baud Rate" Style="{StaticResource SectionCaption}" 
+                                   FontSize="10" Margin="0,0,0,4"/>
                         <ComboBox x:Name="cbBaudRate" 
                                   IsEditable="True"
+                                  Style="{StaticResource ModernComboBox}"
                                   SelectionChanged="Cb_SelectionChanged"
                                   KeyUp="CbBaudRate_KeyUp"
                                   ToolTip="Serial baud rate (or type a custom value)">
@@ -98,11 +98,13 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <!-- Data Bits: lista statica, non cambia mai -->
-                    <StackPanel Grid.Column="1" Grid.Row="0" Margin="0,0,8,0">
-                        <Label Content="Data Bits:" FontSize="11"/>
+                    <!-- Data Bits -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Data Bits" Style="{StaticResource SectionCaption}" 
+                                   FontSize="10" Margin="0,0,0,4"/>
                         <ComboBox x:Name="cbDataBits" 
                                   IsEditable="False"
+                                  Style="{StaticResource ModernComboBox}"
                                   SelectionChanged="Cb_SelectionChanged"
                                   ToolTip="Data bits (5-8)">
                             <sys:String>5</sys:String>
@@ -112,45 +114,53 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <!-- Parity: enum come ItemsSource -->
-                    <StackPanel Grid.Column="2" Grid.Row="0" Margin="0,0,8,0">
-                        <Label Content="Parity:" FontSize="11"/>
+                    <!-- Parity -->
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="Parity" Style="{StaticResource SectionCaption}" 
+                                   FontSize="10" Margin="0,0,0,4"/>
                         <ComboBox x:Name="cbParity" 
                                   IsEditable="False"
+                                  Style="{StaticResource ModernComboBox}"
                                   ItemsSource="{Binding Source={StaticResource ParityValues}}"
                                   SelectionChanged="Cb_SelectionChanged"
                                   ToolTip="Parity check"/>
                     </StackPanel>
 
-                    <!-- Stop Bits: enum come ItemsSource -->
-                    <StackPanel Grid.Column="3" Grid.Row="0">
-                        <Label Content="Stop Bits:" FontSize="11"/>
+                    <!-- Stop Bits -->
+                    <StackPanel Grid.Column="6">
+                        <TextBlock Text="Stop Bits" Style="{StaticResource SectionCaption}" 
+                                   FontSize="10" Margin="0,0,0,4"/>
                         <ComboBox x:Name="cbStopBits" 
                                   IsEditable="False"
+                                  Style="{StaticResource ModernComboBox}"
                                   ItemsSource="{Binding Source={StaticResource StopBitsValues}}"
                                   SelectionChanged="Cb_SelectionChanged"
                                   ToolTip="Stop bits"/>
                     </StackPanel>
-
-                    <!-- Current config display -->
-                    <TextBlock Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="4"
-                               x:Name="txtCurrentConfig"
-                               Text="Current: 115200, 8, N, 1"
-                               Foreground="Gray"
-                               FontSize="10"
-                               Margin="0,8,0,0"/>
                 </Grid>
+
+                <!-- Current config come badge -->
+                <Border Grid.Row="2" Style="{StaticResource InfoBadge}" 
+                        HorizontalAlignment="Left" Margin="0,14,0,0">
+                    <TextBlock x:Name="txtCurrentConfig"
+                               Text="Current: 115200, 8, N, 1"
+                               Foreground="#2D7DD2"
+                               FontSize="11"
+                               FontWeight="SemiBold"/>
+                </Border>
             </Grid>
         </Border>
 
-        <!-- Info -->
+        <!-- ============ Info ============ -->
         <TextBlock Grid.Row="2" 
                    Text="These settings will be applied to both Station and Vehicle serial ports." 
-                   Foreground="Gray" 
+                   Foreground="#888888" 
+                   FontSize="11"
                    VerticalAlignment="Bottom"
-                   TextWrapping="Wrap"/>
+                   TextWrapping="Wrap"
+                   Margin="0,10,0,0"/>
 
-        <!-- Status locale alla dialog -->
+        <!-- ============ Status ============ -->
         <TextBlock Grid.Row="3" 
                    x:Name="txtStatus"
                    Text=""
@@ -158,26 +168,26 @@
                    FontSize="11"
                    Margin="0,4,0,0"/>
 
-        <!-- Pulsanti -->
+        <!-- ============ Buttons ============ -->
         <StackPanel Grid.Row="4" 
                     Orientation="Horizontal" 
                     HorizontalAlignment="Right"
-                    Margin="0,10,0,0">
+                    Margin="0,16,0,0">
             <Button x:Name="btnCancel" 
-                    Content="Cancel" 
+                    Content="CANCEL" 
                     Click="BtnCancel_Click"
-                    Padding="20,5" 
-                    Margin="0,0,10,0"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"
                     IsCancel="True"/>
             <Button x:Name="btnApply" 
-                    Content="Apply" 
+                    Content="APPLY" 
                     Click="BtnApply_Click"
-                    Padding="20,5" 
-                    Margin="0,0,10,0"/>
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"/>
             <Button x:Name="btnSave" 
-                    Content="Save" 
+                    Content="SAVE" 
                     Click="BtnSave_Click"
-                    Padding="20,5"
+                    Style="{StaticResource PrimaryButton}"
                     IsDefault="True"/>
         </StackPanel>
     </Grid>

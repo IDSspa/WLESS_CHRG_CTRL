@@ -6,7 +6,7 @@
         MinHeight="500" MinWidth="700">
 
     <Window.Resources>
-        <Style TargetType="ListViewItem">
+        <Style TargetType="ListViewItem" BasedOn="{StaticResource ModernListViewItem}">
             <Setter Property="Foreground" Value="{Binding TextColor}"/>
         </Style>
     </Window.Resources>
@@ -21,19 +21,26 @@
             </MenuItem>
         </Menu>
 
-        <!-- Contenuto principale (esistente, wrappato in Grid) -->
+        <!-- Contenuto principale -->
         <Grid Margin="15">
-            <!-- ... tutto il contenuto precedente ... -->
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!-- Titolo -->
+            <TextBlock Grid.Row="0" 
+                       Text="WLESS CHRG CTRL" 
+                       FontSize="20" 
+                       FontWeight="Bold" 
+                       HorizontalAlignment="Center"
+                       Margin="0,0,0,15"/>
 
             <!-- Sezione Porte Seriali -->
-            <Grid Grid.Row="0" Margin="0,0,0,4">
+            <Grid Grid.Row="1" Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="12"/>
@@ -49,16 +56,14 @@
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Header: LED + titolo -->
                         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
                             <Ellipse x:Name="ledStation" Width="9" Height="9" Fill="Gray"
-                         VerticalAlignment="Center" Margin="0,0,8,0"
-                         ToolTip="Station connection status"/>
+                                     VerticalAlignment="Center" Margin="0,0,8,0"
+                                     ToolTip="Station connection status"/>
                             <TextBlock Text="STATION" FontWeight="SemiBold" FontSize="12"
-                           Foreground="#444" VerticalAlignment="Center"/>
+                                       Foreground="#444" VerticalAlignment="Center"/>
                         </StackPanel>
 
-                        <!-- Combo + Connect nella stessa riga -->
                         <Grid Grid.Row="1">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -66,19 +71,18 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <ComboBox Grid.Column="0" x:Name="cbStationPort" Style="{StaticResource PortComboBox}"
-                          ToolTip="Select station serial port"/>
+                                      ToolTip="Select station serial port"/>
                             <Button Grid.Column="2" x:Name="btnStationConnect" Content="CONNECT"
-                        Click="BtnStationConnect_Click" Style="{StaticResource ConnectButton}"
-                        ToolTip="Open/Close Station connection"/>
+                                    Click="BtnStationConnect_Click" Style="{StaticResource ConnectButton}"
+                                    ToolTip="Open/Close Station connection"/>
                         </Grid>
 
-                        <!-- Ruolo -->
                         <TextBlock Grid.Row="2" x:Name="lblStationRole" Text=""
-                       Foreground="DodgerBlue" FontSize="11" Margin="0,8,0,0"/>
+                                   Foreground="DodgerBlue" FontSize="11" Margin="0,8,0,0"/>
                     </Grid>
                 </Border>
 
-                <!-- Vehicle (speculare) -->
+                <!-- Vehicle -->
                 <Border Grid.Column="2" Style="{StaticResource ConnectionCard}">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -89,10 +93,10 @@
 
                         <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,10">
                             <TextBlock Text="VEHICLE" FontWeight="SemiBold" FontSize="12"
-                           Foreground="#444" VerticalAlignment="Center"/>
+                                       Foreground="#444" VerticalAlignment="Center"/>
                             <Ellipse x:Name="ledVehicle" Width="9" Height="9" Fill="Gray"
-                         VerticalAlignment="Center" Margin="8,0,0,0"
-                         ToolTip="Vehicle connection status"/>
+                                     VerticalAlignment="Center" Margin="8,0,0,0"
+                                     ToolTip="Vehicle connection status"/>
                         </StackPanel>
 
                         <Grid Grid.Row="1">
@@ -102,49 +106,51 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0" x:Name="btnVehicleConnect" Content="CONNECT"
-                        Click="BtnVehicleConnect_Click" Style="{StaticResource ConnectButton}"
-                        ToolTip="Open/Close Vehicle connection"/>
+                                    Click="BtnVehicleConnect_Click" Style="{StaticResource ConnectButton}"
+                                    ToolTip="Open/Close Vehicle connection"/>
                             <ComboBox Grid.Column="2" x:Name="cbVehiclePort" Style="{StaticResource PortComboBox}"
-                          ToolTip="Select vehicle serial port"/>
+                                      ToolTip="Select vehicle serial port"/>
                         </Grid>
 
                         <TextBlock Grid.Row="2" x:Name="lblVehicleRole" Text=""
-                       Foreground="DodgerBlue" FontSize="11"
-                       HorizontalAlignment="Right" Margin="0,8,0,0"/>
+                                   Foreground="DodgerBlue" FontSize="11"
+                                   HorizontalAlignment="Right" Margin="0,8,0,0"/>
                     </Grid>
                 </Border>
             </Grid>
-            
+
             <!-- Sezione ListView Messaggi -->
-            <Grid Grid.Row="1" Margin="0,15,0,0">
+            <Grid Grid.Row="2" Margin="0,15,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="12"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Station Messages -->
                 <Border Grid.Column="0" 
-                        BorderBrush="Gray" 
-                        BorderThickness="1" 
-                        CornerRadius="4">
+                        Style="{StaticResource CardBorder}" 
+                        Padding="0"
+                        ClipToBounds="True">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <Label Grid.Row="0" 
-                               Content="STATION MESSAGES" 
-                               Background="LightGray" 
-                               Padding="8,4"/>
+
+                        <TextBlock Grid.Row="0" Text="STATION MESSAGES" 
+                                   Style="{StaticResource SectionCaption}"
+                                   Padding="12,10,12,8"/>
+
                         <ListView Grid.Row="1" 
                                   x:Name="lvStationMessages" 
-                                  Margin="4"
+                                  Style="{StaticResource ModernListView}"
                                   BorderThickness="0"
                                   SelectionMode="Extended"
                                   KeyDown="LvMessages_KeyDown"
                                   Loaded="LvStationMessages_Loaded"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto" ContextMenuOpening="Station_ContextMenuOpening">
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto" 
+                                  ContextMenuOpening="Station_ContextMenuOpening">
                             <ListView.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Parse message..." Click="MenuParseStation_Click" Name="MenuParseStation"/>
@@ -155,7 +161,7 @@
                                 </ContextMenu>
                             </ListView.ContextMenu>
                             <ListView.View>
-                                <GridView x:Name="gvStation">
+                                <GridView x:Name="gvStation" ColumnHeaderContainerStyle="{StaticResource FlatGridViewHeader}">
                                     <GridViewColumn Header="Time" Width="90" DisplayMemberBinding="{Binding Time}"/>
                                     <GridViewColumn x:Name="gvcStationMessage" Header="Message" Width="380" DisplayMemberBinding="{Binding Message}"/>
                                 </GridView>
@@ -166,27 +172,29 @@
 
                 <!-- Vehicle Messages -->
                 <Border Grid.Column="2" 
-                        BorderBrush="Gray" 
-                        BorderThickness="1" 
-                        CornerRadius="4">
+                        Style="{StaticResource CardBorder}" 
+                        Padding="0"
+                        ClipToBounds="True">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
-                        <Label Grid.Row="0" 
-                               Content="VEHICLE MESSAGES" 
-                               Background="LightGray" 
-                               Padding="8,4"
-                               HorizontalContentAlignment="Right"/>
+
+                        <TextBlock Grid.Row="0" Text="VEHICLE MESSAGES" 
+                                   Style="{StaticResource SectionCaption}"
+                                   HorizontalAlignment="Right"
+                                   Padding="12,10,12,8"/>
+
                         <ListView Grid.Row="1" 
                                   x:Name="lvVehicleMessages" 
-                                  Margin="4"
+                                  Style="{StaticResource ModernListView}"
                                   BorderThickness="0"
                                   SelectionMode="Extended"
                                   KeyDown="LvMessages_KeyDown"
                                   Loaded="LvVehicleMessages_Loaded"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto" ContextMenuOpening="Vehicle_ContextMenuOpening">
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto" 
+                                  ContextMenuOpening="Vehicle_ContextMenuOpening">
                             <ListView.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Parse message..." Click="MenuParseVehicle_Click" Name="MenuParseVehicle"/>
@@ -197,7 +205,7 @@
                                 </ContextMenu>
                             </ListView.ContextMenu>
                             <ListView.View>
-                                <GridView x:Name="gvVehicle">
+                                <GridView x:Name="gvVehicle" ColumnHeaderContainerStyle="{StaticResource FlatGridViewHeader}">
                                     <GridViewColumn Header="Time" Width="90" DisplayMemberBinding="{Binding Time}"/>
                                     <GridViewColumn x:Name="gvcVehicleMessage" Header="Message" Width="380" DisplayMemberBinding="{Binding Message}"/>
                                 </GridView>
@@ -208,7 +216,7 @@
             </Grid>
 
             <!-- Sezione Comandi -->
-            <Grid Grid.Row="2" Margin="0,15,0,0">
+            <Grid Grid.Row="3" Margin="0,15,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="10"/>
@@ -239,7 +247,7 @@
             </Grid>
 
             <!-- Status Bar -->
-            <StatusBar Grid.Row="3" 
+            <StatusBar Grid.Row="4" 
                        Margin="0,10,0,0">
                 <StatusBarItem>
                     <TextBlock x:Name="txtStatus" Text="Ready - Select serial ports and click CONNECT"/>

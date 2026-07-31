@@ -128,5 +128,135 @@
             <Setter Property="Padding" Value="10,5"/>
         </Style>
 
+        <!-- ===== GridView header piatto (per ListView tipo StatusDialog) ===== -->
+        <Style x:Key="FlatGridViewHeader" TargetType="GridViewColumnHeader">
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="Foreground" Value="#555555"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="GridViewColumnHeader">
+                        <Border Background="{TemplateBinding Background}"
+                        BorderBrush="#E2E2E2"
+                        BorderThickness="0,0,0,1"
+                        Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== ListView moderna con righe alternate ===== -->
+        <Style x:Key="ModernListView" TargetType="ListView">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#E2E2E2"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="AlternationCount" Value="2"/>
+        </Style>
+
+        <Style x:Key="ModernListViewItem" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border x:Name="bg" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <GridViewRowPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#EAF2FB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                    <Setter Property="Background" Value="#FAFAFA"/>
+                </Trigger>
+                <Trigger Property="ItemsControl.AlternationIndex" Value="0">
+                    <Setter Property="Background" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ===================================================== -->
+        <!-- ===== Menu bar flat/moderna (implicit styles) ====== -->
+        <!-- ===================================================== -->
+
+        <ControlTemplate x:Key="TopLevelHeaderTemplate" TargetType="MenuItem">
+            <Grid>
+                <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                CornerRadius="4" Padding="10,6" Margin="2,0">
+                    <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                </Border>
+                <Popup x:Name="PART_Popup" Placement="Bottom" IsOpen="{TemplateBinding IsSubmenuOpen}"
+               AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                    <Border Background="White" BorderBrush="#E2E2E2" BorderThickness="1"
+                    CornerRadius="6" Padding="4" MinWidth="170">
+                        <Border.Effect>
+                            <DropShadowEffect Color="#000000" Opacity="0.14" BlurRadius="14" ShadowDepth="2" Direction="270"/>
+                        </Border.Effect>
+                        <StackPanel IsItemsHost="True"/>
+                    </Border>
+                </Popup>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter TargetName="Bg" Property="Background" Value="#EAF2FB"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <ControlTemplate x:Key="SubmenuItemTemplate" TargetType="MenuItem">
+            <Border x:Name="Bg" Background="{TemplateBinding Background}"
+            CornerRadius="4" Padding="12,8" Margin="2">
+                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter TargetName="Bg" Property="Background" Value="#EAF2FB"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="#B0B0B0"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <!-- Style implicito: si applica a TUTTI i MenuItem (menu bar + context menu) -->
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="Role" Value="TopLevelHeader">
+                    <Setter Property="Template" Value="{StaticResource TopLevelHeaderTemplate}"/>
+                </Trigger>
+                <Trigger Property="Role" Value="SubmenuItem">
+                    <Setter Property="Template" Value="{StaticResource SubmenuItemTemplate}"/>
+                    <Setter Property="MinWidth" Value="160"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Style implicito per i separatori (usato sia dal menu File che dai context menu) -->
+        <Style TargetType="Separator">
+            <Setter Property="Background" Value="#E2E2E2"/>
+            <Setter Property="Height" Value="1"/>
+            <Setter Property="Margin" Value="8,4"/>
+        </Style>
+
+        <!-- Style implicito per la Menu bar principale -->
+        <Style TargetType="Menu">
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#E2E2E2"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="6,4"/>
+        </Style>
+
     </Application.Resources>
 </Application>

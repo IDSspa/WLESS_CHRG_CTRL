@@ -18,9 +18,9 @@ namespace WLESS_CHRG_CTRL
         {
             InitializeComponent();
             Title = $"Parsed Status - {sourceName}";
+            txtHeaderTitle.Text = $"{sourceName} Response";   // <-- riga opzionale
             PopulateListView(fieldNames, values);
         }
-
         /// <summary>
         /// Popola il ListView con coppie Field/Value
         /// </summary>
