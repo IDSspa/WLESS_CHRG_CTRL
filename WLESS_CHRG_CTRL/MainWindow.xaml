@@ -15,6 +15,9 @@
         <!-- Menu -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
+                <MenuItem Header="Load _Station Script..." Click="MenuLoadStationScript_Click"/>
+                <MenuItem Header="Load _Vehicle Script..." Click="MenuLoadVehicleScript_Click"/>
+                <Separator/>
                 <MenuItem Header="_Settings..." Click="MenuSettings_Click"/>
                 <Separator/>
                 <MenuItem Header="E_xit" Click="MenuExit_Click"/>
@@ -194,7 +197,10 @@
                                   KeyDown="LvMessages_KeyDown"
                                   Loaded="LvVehicleMessages_Loaded"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto" 
-                                  ContextMenuOpening="Vehicle_ContextMenuOpening">
+                                  ContextMenuOpening="Vehicle_ContextMenuOpening" 
+                                  AllowDrop="True" 
+                                  DragEnter="VehicleCommand_DragEnter" 
+                                  Drop="VehicleCommand_Drop">
                             <ListView.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="Parse message..." Click="MenuParseVehicle_Click" Name="MenuParseVehicle"/>
@@ -229,8 +235,12 @@
                     <TextBox x:Name="txtStationCommand" 
                              Height="30" 
                              VerticalContentAlignment="Center"
-                             KeyDown="TxtStationCommand_KeyDown"
+                             KeyDown="TxtStationCommand_KeyDown"                            
                              MouseDoubleClick="TxtStationCommand_MouseDoubleClick"
+                             AllowDrop="True"
+                             PreviewDragEnter="StationCommand_DragEnter"
+                             PreviewDragOver="StationCommand_DragEnter"
+                             PreviewDrop="StationCommand_Drop"                             
                              ToolTip="Double click to open multi-line editor / ENTER to send single command"/>
                 </StackPanel>
 
@@ -242,6 +252,10 @@
                              VerticalContentAlignment="Center"
                              KeyDown="TxtVehicleCommand_KeyDown"
                              MouseDoubleClick="TxtVehicleCommand_MouseDoubleClick"
+                             AllowDrop="True"
+                             PreviewDragOver="VehicleCommand_DragEnter"
+                             PreviewDragEnter="VehicleCommand_DragEnter"
+                             PreviewDrop="VehicleCommand_Drop"                             
                              ToolTip="Double click to open multi-line editor / ENTER to send single command"/>
                 </StackPanel>
             </Grid>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 
@@ -17,9 +18,54 @@ namespace WLESS_CHRG_CTRL
         /// </summary>
         public int CmdDelay { get; private set; } = 500;
 
+        /// <summary>
+        /// Costruttore che pre-popola le righe di comando a partire da un file
+        /// script (.wcx). Usato sia dal drag&drop sia dal caricamento da menu File.
+        /// </summary>
+        public CmdLinesDialog(string filePath) : this()
+        {
+            LoadFromFile(filePath);
+        }
+
         public CmdLinesDialog()
         {
             InitializeComponent();
+        }
+
+        private void LoadFromReader(StreamReader reader)
+        {
+            try
+            {
+                var lines = new List<string>();
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    string trimmed = line.Trim();
+                    if (!string.IsNullOrEmpty(trimmed))
+                        lines.Add(trimmed);
+                }
+
+                txtCmdLines.Text = string.Join(Environment.NewLine, lines);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error reading script content:\n{ex.Message}",
+                    "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void LoadFromFile(string filePath)
+        {
+            try
+            {
+                using var reader = new StreamReader(filePath);
+                LoadFromReader(reader);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error loading script file:\n{ex.Message}",
+                    "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void BtnSend_Click(object sender, RoutedEventArgs e)

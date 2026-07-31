@@ -123,6 +123,9 @@
   <data name="HFC_REPLY_HEADER" xml:space="preserve">
     <value>HFC,1</value>
   </data>
+  <data name="ScriptFileExtension" xml:space="preserve">
+    <value>.wcx</value>
+  </data>
   <data name="UQ_REPLY_HEADER" xml:space="preserve">
     <value>UQ,1</value>
   </data>

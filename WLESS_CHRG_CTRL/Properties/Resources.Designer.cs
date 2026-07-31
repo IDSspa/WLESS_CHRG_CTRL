@@ -79,6 +79,15 @@ namespace WLESS_CHRG_CTRL.Properties {
         }
         
         /// <summary>
+        ///   Cerca una stringa localizzata simile a .wcx.
+        /// </summary>
+        internal static string ScriptFileExtension {
+            get {
+                return ResourceManager.GetString("ScriptFileExtension", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Cerca una stringa localizzata simile a UQ,1.
         /// </summary>
         internal static string UQ_REPLY_HEADER {

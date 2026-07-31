@@ -14,6 +14,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using Path = System.IO.Path;
 
 namespace WLESS_CHRG_CTRL
 {
@@ -392,7 +393,7 @@ namespace WLESS_CHRG_CTRL
 
             if (!port.IsOpen)
             {
-                AppendMessage(collection, "[ERROR] Porta non connessa!", false);
+                AppendMessage(collection, "[ERROR] Port not open!", false);
                 return;
             }
 
@@ -415,7 +416,7 @@ namespace WLESS_CHRG_CTRL
         {
             if (collection.Count == 0)
             {
-                MessageBox.Show($"Nessun messaggio da salvare per {portName}.", "Info",
+                MessageBox.Show($"No messages to save for {portName}.", "Info",
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -425,7 +426,7 @@ namespace WLESS_CHRG_CTRL
                 Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
                 DefaultExt = "txt",
                 FileName = $"WLESS_{portName}_Messages_{DateTime.Now:yyyyMMdd_HHmmss}.txt",
-                Title = $"Salva messaggi {portName}"
+                Title = $"Save messages {portName}"
             };
 
             if (dialog.ShowDialog() == true)
@@ -445,11 +446,11 @@ namespace WLESS_CHRG_CTRL
                     }
 
                     File.WriteAllText(dialog.FileName, sb.ToString(), Encoding.UTF8);
-                    txtStatus.Text = $"Salvati {collection.Count} messaggi in {System.IO.Path.GetFileName(dialog.FileName)}";
+                    txtStatus.Text = $"Saved {collection.Count} messages in {System.IO.Path.GetFileName(dialog.FileName)}";
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Errore durante il salvataggio:\n{ex.Message}", "Errore",
+                    MessageBox.Show($"Error saving messages:\n{ex.Message}", "Error",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
@@ -567,7 +568,7 @@ namespace WLESS_CHRG_CTRL
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
+                MessageBox.Show($"Parsing error:\n{ex.Message}", "Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -653,7 +654,7 @@ namespace WLESS_CHRG_CTRL
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
+                MessageBox.Show($"Parsing error:\n{ex.Message}", "Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -726,7 +727,7 @@ namespace WLESS_CHRG_CTRL
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Errore durante il parsing:\n{ex.Message}", "Errore",
+                MessageBox.Show($"Parsing error:\n{ex.Message}", "Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -770,7 +771,7 @@ namespace WLESS_CHRG_CTRL
             {
                 uiDispatcher.Invoke(() =>
                 {
-                    AppendMessage(messageCollection, "[ERROR] Porta non connessa — sequenza annullata.", false);
+                    AppendMessage(messageCollection, "[ERROR] Port not open — sequence canceled.", false);
                 });
                 return;
             }
@@ -792,7 +793,7 @@ namespace WLESS_CHRG_CTRL
                 {
                     uiDispatcher.Invoke(() =>
                     {
-                        AppendMessage(messageCollection, "[ERROR] Connessione persa durante la sequenza.", false);
+                        AppendMessage(messageCollection, "[ERROR] Connection lost during sequence.", false);
                     });
                     return;
                 }
@@ -906,6 +907,51 @@ namespace WLESS_CHRG_CTRL
             AppendMessage(collection, $"[SYSTEM] {roleName} port {portName} disconnected (device removed)", false);
 
             txtStatus.Text = $"{roleName} port {portName} was disconnected — device removed";
+        }
+
+        private static bool IsValidScriptDrop(DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+                return false;
+
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            return files.Length == 1 &&
+                   Path.GetExtension(files[0]).Equals(Properties.Resources.ScriptFileExtension, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string? GetDroppedScriptFile(DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+                return null;
+
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            return files.FirstOrDefault(f =>
+                Path.GetExtension(f).Equals(Properties.Resources.ScriptFileExtension, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Apre il dialog multi-linea e, se confermato, invia i comandi in sequenza con ritardo.
+        /// Se filePath è specificato, precarica le righe da script invece del contenuto
+        /// della TextBox associata.
+        /// </summary>
+        private void OpenCmdLinesDialog(SerialPort port, TextBox associatedTextBox,
+            ObservableCollection<SerialMessage> messageCollection, string? filePath = null)
+        {
+            var dialog = filePath != null
+                ? new CmdLinesDialog(filePath) { Owner = this }
+                : new CmdLinesDialog { Owner = this };
+
+            // Pre-popola con il contenuto attuale della TextBox (solo se non stiamo caricando da file)
+            if (filePath == null && !string.IsNullOrWhiteSpace(associatedTextBox.Text))
+            {
+                dialog.txtCmdLines.Text = associatedTextBox.Text;
+            }
+
+            if (dialog.ShowDialog() == true)
+            {
+                _ = SendCommandsSequenceAsync(port, dialog.CmdLines, dialog.CmdDelay,
+                    messageCollection);
+            }
         }
 
         // ==================== EVENT HANDLERS ====================
@@ -1075,7 +1121,7 @@ namespace WLESS_CHRG_CTRL
                 }
 
                 Clipboard.SetText(sb.ToString());
-                txtStatus.Text = $"Copiati {listView.SelectedItems.Count} messaggi negli appunti";
+                txtStatus.Text = $"Copied {listView.SelectedItems.Count} messages to clipboard";
                 e.Handled = true;
             }
         }
@@ -1222,10 +1268,78 @@ namespace WLESS_CHRG_CTRL
                 }
             }
         }
-        
+
         private void MenuExit_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+
+        // ==================== LOAD SCRIPT ====================
+
+        private void MenuLoadStationScript_Click(object sender, RoutedEventArgs e)
+        {
+            LoadScriptFromDialog(spStation, txtStationCommand, stationMessages);
+        }
+
+        private void MenuLoadVehicleScript_Click(object sender, RoutedEventArgs e)
+        {
+            LoadScriptFromDialog(spVehicle, txtVehicleCommand, vehicleMessages);
+        }
+
+        private void LoadScriptFromDialog(SerialPort port, TextBox associatedTextBox,
+            ObservableCollection<SerialMessage> messageCollection)
+        {
+            var openDialog = new OpenFileDialog
+            {
+                Filter = $"WLESS Command Script (*{Properties.Resources.ScriptFileExtension})|*{Properties.Resources.ScriptFileExtension}|All files (*.*)|*.*",
+                Title = "Load Command Script"
+            };
+
+            if (openDialog.ShowDialog() == true)
+            {
+                OpenCmdLinesDialog(port, associatedTextBox, messageCollection, openDialog.FileName);
+            }
+        }
+
+        // ==================== DRAG & DROP SCRIPT (.wcx) ====================
+
+        private void StationCommand_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effects = IsValidScriptDrop(e) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void StationCommand_Drop(object sender, DragEventArgs e)
+        {
+            string? filePath = GetDroppedScriptFile(e);
+            if (filePath == null)
+            {
+                MessageBox.Show($"Only {Properties.Resources.ScriptFileExtension} script files are supported.",
+                    "Invalid File", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            OpenCmdLinesDialog(spStation, txtStationCommand, stationMessages, filePath);
+        }
+
+        private void VehicleCommand_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effects = IsValidScriptDrop(e) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private void VehicleCommand_Drop(object sender, DragEventArgs e)
+        {
+            string? filePath = GetDroppedScriptFile(e);
+            if (filePath == null)
+            {
+                MessageBox.Show($"Only {Properties.Resources.ScriptFileExtension} script files are supported.",
+                    "Invalid File", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            OpenCmdLinesDialog(spVehicle, txtVehicleCommand, vehicleMessages, filePath);
         }
     }
 }
