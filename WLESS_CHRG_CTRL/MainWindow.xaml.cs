@@ -36,6 +36,12 @@ namespace WLESS_CHRG_CTRL
         private readonly ObservableCollection<SerialMessage> stationMessages = [];
         private readonly ObservableCollection<SerialMessage> vehicleMessages = [];
 
+        private const int ReceiveMessageTimeoutMilliseconds = 150;
+        private readonly StringBuilder stationReceiveBuffer = new();
+        private readonly StringBuilder vehicleReceiveBuffer = new();
+        private readonly DispatcherTimer stationReceiveTimeoutTimer;
+        private readonly DispatcherTimer vehicleReceiveTimeoutTimer;
+
         private static readonly Brush DefaultTextColor = Brushes.Black;
         private static readonly Brush TxTextColor = Brushes.Green;
         private IntPtr deviceNotificationHandle = IntPtr.Zero;
@@ -158,6 +164,11 @@ namespace WLESS_CHRG_CTRL
                 Interval = TimeSpan.FromMilliseconds(600)
             };
             deviceChangeDebounceTimer.Tick += DeviceChangeDebounceTimer_Tick;
+
+            stationReceiveTimeoutTimer = CreateReceiveTimeoutTimer(
+                stationReceiveBuffer, stationMessages);
+            vehicleReceiveTimeoutTimer = CreateReceiveTimeoutTimer(
+                vehicleReceiveBuffer, vehicleMessages);
 
             // Il HWND non esiste ancora finché la finestra non è stata mostrata/renderizzata,
             // quindi agganciamo la registrazione all'evento SourceInitialized.
@@ -314,6 +325,68 @@ namespace WLESS_CHRG_CTRL
         {
             if (listView.Items.Count > 0)
                 listView.ScrollIntoView(listView.Items[^1]);
+        }
+
+        private DispatcherTimer CreateReceiveTimeoutTimer(
+            StringBuilder receiveBuffer,
+            ObservableCollection<SerialMessage> collection)
+        {
+            var timer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(ReceiveMessageTimeoutMilliseconds)
+            };
+            timer.Tick += (_, _) => FlushReceiveBuffer(receiveBuffer, timer, collection);
+            return timer;
+        }
+
+        private void ProcessReceivedData(
+            StringBuilder receiveBuffer,
+            DispatcherTimer timeoutTimer,
+            ObservableCollection<SerialMessage> collection,
+            string data)
+        {
+            timeoutTimer.Stop();
+
+            foreach (char character in data)
+            {
+                if (character == '\r' || character == '\n')
+                {
+                    if (receiveBuffer.Length > 0)
+                    {
+                        AppendMessage(collection, receiveBuffer.ToString(), false);
+                        receiveBuffer.Clear();
+                    }
+                }
+                else
+                {
+                    receiveBuffer.Append(character);
+                }
+            }
+
+            if (receiveBuffer.Length > 0)
+                timeoutTimer.Start();
+        }
+
+        private void FlushReceiveBuffer(
+            StringBuilder receiveBuffer,
+            DispatcherTimer timeoutTimer,
+            ObservableCollection<SerialMessage> collection)
+        {
+            timeoutTimer.Stop();
+
+            if (receiveBuffer.Length == 0)
+                return;
+
+            AppendMessage(collection, receiveBuffer.ToString(), false);
+            receiveBuffer.Clear();
+        }
+
+        private static void ResetReceiveBuffer(
+            StringBuilder receiveBuffer,
+            DispatcherTimer timeoutTimer)
+        {
+            timeoutTimer.Stop();
+            receiveBuffer.Clear();
         }
 
         private void AppendMessage(ObservableCollection<SerialMessage> collection, string message, bool isTx)
@@ -961,7 +1034,8 @@ namespace WLESS_CHRG_CTRL
             try
             {
                 string data = spStation.ReadExisting();
-                AppendMessage(stationMessages, data, false);
+                _ = uiDispatcher.BeginInvoke(() => ProcessReceivedData(
+                    stationReceiveBuffer, stationReceiveTimeoutTimer, stationMessages, data));
             }
             catch (Exception ex)
             {
@@ -974,7 +1048,8 @@ namespace WLESS_CHRG_CTRL
             try
             {
                 string data = spVehicle.ReadExisting();
-                AppendMessage(vehicleMessages, data, false);
+                _ = uiDispatcher.BeginInvoke(() => ProcessReceivedData(
+                    vehicleReceiveBuffer, vehicleReceiveTimeoutTimer, vehicleMessages, data));
             }
             catch (Exception ex)
             {
@@ -997,6 +1072,7 @@ namespace WLESS_CHRG_CTRL
 
                 try
                 {
+                    ResetReceiveBuffer(stationReceiveBuffer, stationReceiveTimeoutTimer);
                     spStation.PortName = stationPort;
                     spStation.Open();
 
@@ -1019,6 +1095,7 @@ namespace WLESS_CHRG_CTRL
             }
             else
             {
+                FlushReceiveBuffer(stationReceiveBuffer, stationReceiveTimeoutTimer, stationMessages);
                 try
                 {
                     if (spStation.IsOpen) spStation.Close();
@@ -1053,6 +1130,7 @@ namespace WLESS_CHRG_CTRL
 
                 try
                 {
+                    ResetReceiveBuffer(vehicleReceiveBuffer, vehicleReceiveTimeoutTimer);
                     spVehicle.PortName = vehiclePort;
                     spVehicle.Open();
 
@@ -1075,6 +1153,7 @@ namespace WLESS_CHRG_CTRL
             }
             else
             {
+                FlushReceiveBuffer(vehicleReceiveBuffer, vehicleReceiveTimeoutTimer, vehicleMessages);
                 try
                 {
                     if (spVehicle.IsOpen) spVehicle.Close();
