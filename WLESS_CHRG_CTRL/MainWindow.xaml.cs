@@ -182,16 +182,13 @@ namespace WLESS_CHRG_CTRL
         internal static class DeviceNotificationNative
         {
             public const int WM_DEVICECHANGE = 0x0219;
+            public const int DBT_DEVNODES_CHANGED = 0x0007;
             public const int DBT_DEVICEARRIVAL = 0x8000;
             public const int DBT_DEVICEREMOVECOMPLETE = 0x8004;
 
             private const int DBT_DEVTYP_DEVICEINTERFACE = 5;
             private const int DEVICE_NOTIFY_WINDOW_HANDLE = 0x00000000;
-
-            // GUID_DEVINTERFACE_COMPORT — identifica le interfacce di device "porta seriale"
-            // (sia fisiche RS232 che virtuali esposte da adattatori USB-seriale/FTDI/CH340/CP210x)
-            private static readonly Guid GUID_DEVINTERFACE_COMPORT =
-                new("86E0D1E0-8089-11D0-9CE4-08003E301F73");
+            private const int DEVICE_NOTIFY_ALL_INTERFACE_CLASSES = 0x00000004;
 
             [StructLayout(LayoutKind.Sequential)]
             private struct DEV_BROADCAST_DEVICEINTERFACE
@@ -212,7 +209,9 @@ namespace WLESS_CHRG_CTRL
 
             /// <summary>
             /// Registra la finestra (via hwnd) per ricevere notifiche WM_DEVICECHANGE
-            /// filtrate sull'interfaccia COM port. Ritorna l'handle di registrazione,
+            /// per tutte le classi di interfaccia. Questo include i debugger USB compositi
+            /// delle ControlCARD, che non sempre notificano direttamente la classe COM.
+            /// Ritorna l'handle di registrazione,
             /// da passare a Unregister quando la finestra viene chiusa.
             /// </summary>
             public static IntPtr Register(IntPtr windowHandle)
@@ -221,7 +220,7 @@ namespace WLESS_CHRG_CTRL
                 {
                     dbcc_devicetype = DBT_DEVTYP_DEVICEINTERFACE,
                     dbcc_reserved = 0,
-                    dbcc_classguid = GUID_DEVINTERFACE_COMPORT
+                    dbcc_classguid = Guid.Empty
                 };
                 dbi.dbcc_size = Marshal.SizeOf(dbi);
 
@@ -229,7 +228,8 @@ namespace WLESS_CHRG_CTRL
                 try
                 {
                     Marshal.StructureToPtr(dbi, buffer, false);
-                    return RegisterDeviceNotification(windowHandle, buffer, DEVICE_NOTIFY_WINDOW_HANDLE);
+                    return RegisterDeviceNotification(windowHandle, buffer,
+                        DEVICE_NOTIFY_WINDOW_HANDLE | DEVICE_NOTIFY_ALL_INTERFACE_CLASSES);
                 }
                 finally
                 {
@@ -915,7 +915,8 @@ namespace WLESS_CHRG_CTRL
             {
                 int eventType = wParam.ToInt32();
 
-                if (eventType == DeviceNotificationNative.DBT_DEVICEARRIVAL ||
+                if (eventType == DeviceNotificationNative.DBT_DEVNODES_CHANGED ||
+                    eventType == DeviceNotificationNative.DBT_DEVICEARRIVAL ||
                     eventType == DeviceNotificationNative.DBT_DEVICEREMOVECOMPLETE)
                 {
                     // Riavvia il debounce: eventi multipli ravvicinati sono comuni
