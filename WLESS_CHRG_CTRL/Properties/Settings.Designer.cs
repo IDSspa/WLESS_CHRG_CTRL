@@ -82,5 +82,17 @@ namespace WLESS_CHRG_CTRL.Properties {
                 this["SerialStopBits"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string CaptureDumpDirectory {
+            get {
+                return ((string)(this["CaptureDumpDirectory"]));
+            }
+            set {
+                this["CaptureDumpDirectory"] = value;
+            }
+        }
     }
 }

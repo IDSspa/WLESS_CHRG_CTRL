@@ -152,7 +152,8 @@
                                   SelectionMode="Extended"
                                   KeyDown="LvMessages_KeyDown"
                                   Loaded="LvStationMessages_Loaded"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto" 
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   ContextMenuOpening="Station_ContextMenuOpening">
                             <ListView.ContextMenu>
                                 <ContextMenu>
@@ -196,7 +197,8 @@
                                   SelectionMode="Extended"
                                   KeyDown="LvMessages_KeyDown"
                                   Loaded="LvVehicleMessages_Loaded"
-                                  ScrollViewer.VerticalScrollBarVisibility="Auto" 
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                   ContextMenuOpening="Vehicle_ContextMenuOpening" 
                                   AllowDrop="True" 
                                   DragEnter="VehicleCommand_DragEnter" 

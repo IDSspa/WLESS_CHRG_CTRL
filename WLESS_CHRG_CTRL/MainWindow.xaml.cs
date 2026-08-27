@@ -36,6 +36,29 @@ namespace WLESS_CHRG_CTRL
         private readonly ObservableCollection<SerialMessage> stationMessages = [];
         private readonly ObservableCollection<SerialMessage> vehicleMessages = [];
 
+        private sealed class CaptureDump
+        {
+            public CaptureDump(string type, string samplePrefix, string endPrefix,
+                string header, DateTime timestamp)
+            {
+                Type = type;
+                SamplePrefix = samplePrefix;
+                EndPrefix = endPrefix;
+                Header = header;
+                Timestamp = timestamp;
+            }
+
+            public string Type { get; }
+            public string SamplePrefix { get; }
+            public string EndPrefix { get; }
+            public string Header { get; }
+            public DateTime Timestamp { get; }
+            public List<string> Rows { get; } = [];
+        }
+
+        private CaptureDump stationCaptureDump;
+        private CaptureDump vehicleCaptureDump;
+
         private const int ReceiveMessageTimeoutMilliseconds = 150;
         private readonly StringBuilder stationReceiveBuffer = new();
         private readonly StringBuilder vehicleReceiveBuffer = new();
@@ -47,6 +70,8 @@ namespace WLESS_CHRG_CTRL
         private IntPtr deviceNotificationHandle = IntPtr.Zero;
         private HwndSource hwndSource;
         private readonly DispatcherTimer deviceChangeDebounceTimer;
+        private const int DeviceChangeScanCount = 8;
+        private int remainingDeviceChangeScans;
         private readonly Dispatcher uiDispatcher;
 
         /// <summary>
@@ -353,7 +378,7 @@ namespace WLESS_CHRG_CTRL
                 {
                     if (receiveBuffer.Length > 0)
                     {
-                        AppendMessage(collection, receiveBuffer.ToString(), false);
+                        HandleReceivedLine(collection, receiveBuffer.ToString());
                         receiveBuffer.Clear();
                     }
                 }
@@ -377,8 +402,106 @@ namespace WLESS_CHRG_CTRL
             if (receiveBuffer.Length == 0)
                 return;
 
-            AppendMessage(collection, receiveBuffer.ToString(), false);
+            HandleReceivedLine(collection, receiveBuffer.ToString());
             receiveBuffer.Clear();
+        }
+
+        private void HandleReceivedLine(ObservableCollection<SerialMessage> collection, string line)
+        {
+            string trimmedLine = line.Trim();
+            if (string.IsNullOrEmpty(trimmedLine))
+                return;
+
+            bool consumed = collection == stationMessages
+                ? TryProcessCaptureDumpLine(ref stationCaptureDump, collection, "STATION", trimmedLine)
+                : TryProcessCaptureDumpLine(ref vehicleCaptureDump, collection, "VEHICLE", trimmedLine);
+
+            if (!consumed)
+                AppendMessage(collection, trimmedLine, false);
+        }
+
+        private bool TryProcessCaptureDumpLine(ref CaptureDump captureDump,
+            ObservableCollection<SerialMessage> collection, string role, string line)
+        {
+            const string capHeaderPrefix = "CAPD_COLUMNS,1,";
+            const string wptHeaderPrefix = "WPTCAPD_COLUMNS,1,";
+
+            if (line.StartsWith(capHeaderPrefix, StringComparison.Ordinal))
+            {
+                captureDump = new CaptureDump("CAPD", "CAPD,1,", "CAPS,1,",
+                    line[capHeaderPrefix.Length..], DateTime.Now);
+                return true;
+            }
+
+            if (line.StartsWith(wptHeaderPrefix, StringComparison.Ordinal))
+            {
+                captureDump = new CaptureDump("WPTCAPD", "WPTCAPD,1,", "WPTCAP,1,",
+                    line[wptHeaderPrefix.Length..], DateTime.Now);
+                return true;
+            }
+
+            if (captureDump == null)
+                return false;
+
+            if (line.StartsWith(captureDump.SamplePrefix, StringComparison.Ordinal))
+            {
+                captureDump.Rows.Add(line[captureDump.SamplePrefix.Length..]);
+                return true;
+            }
+
+            if (line.StartsWith(captureDump.EndPrefix, StringComparison.Ordinal))
+            {
+                SaveCaptureDump(collection, role, captureDump);
+                captureDump = null;
+                return false;
+            }
+
+            // Unrelated diagnostics may be interleaved with the dump. Keep them
+            // visible without interrupting capture collection.
+            return false;
+        }
+
+        private void SaveCaptureDump(ObservableCollection<SerialMessage> collection,
+            string role, CaptureDump captureDump)
+        {
+            try
+            {
+                string directory = Properties.Settings.Default.CaptureDumpDirectory;
+                if (string.IsNullOrWhiteSpace(directory))
+                {
+                    directory = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "WLESS_CHRG_CTRL", "Captures");
+                }
+
+                Directory.CreateDirectory(directory);
+
+                string timestamp = captureDump.Timestamp.ToString("yyyyMMdd_HHmmss_fff");
+                string baseName = $"{timestamp}_{role}_{captureDump.Type}";
+                string filePath = Path.Combine(directory, baseName + ".csv");
+                int suffix = 1;
+                while (File.Exists(filePath))
+                {
+                    filePath = Path.Combine(directory, $"{baseName}_{suffix}.csv");
+                    suffix++;
+                }
+
+                var csvLines = new List<string>(captureDump.Rows.Count + 1)
+                {
+                    captureDump.Header
+                };
+                csvLines.AddRange(captureDump.Rows);
+                File.WriteAllLines(filePath, csvLines, new UTF8Encoding(false));
+
+                AppendMessage(collection,
+                    $"[SYSTEM] {captureDump.Type} dump saved: {captureDump.Rows.Count} samples -> {filePath}",
+                    false);
+            }
+            catch (Exception ex)
+            {
+                AppendMessage(collection,
+                    $"[ERROR] Unable to save {captureDump.Type} dump: {ex.Message}", false);
+            }
         }
 
         private static void ResetReceiveBuffer(
@@ -449,12 +572,10 @@ namespace WLESS_CHRG_CTRL
                     maxWidth = formattedText.Width;
             }
 
-            maxWidth += 20;
-            double minWidth = 200;
-            double newWidth = Math.Max(maxWidth, minWidth);
-            double maxAllowedWidth = 800;
-
-            messageColumn.Width = Math.Min(newWidth, maxAllowedWidth);
+            // Include the horizontal item padding and keep the full message
+            // reachable through the ListView horizontal scrollbar.
+            maxWidth += 30;
+            messageColumn.Width = Math.Max(maxWidth, 380);
         }
 
         private void SendCommand(SerialPort port, TextBox textBox, ObservableCollection<SerialMessage> collection)
@@ -919,14 +1040,21 @@ namespace WLESS_CHRG_CTRL
                     eventType == DeviceNotificationNative.DBT_DEVICEARRIVAL ||
                     eventType == DeviceNotificationNative.DBT_DEVICEREMOVECOMPLETE)
                 {
-                    // Riavvia il debounce: eventi multipli ravvicinati sono comuni
-                    // durante l'enumerazione di device composite.
-                    deviceChangeDebounceTimer.Stop();
-                    deviceChangeDebounceTimer.Start();
+                    ScheduleDeviceChangeScans();
                 }
             }
 
             return IntPtr.Zero;
+        }
+
+        private void ScheduleDeviceChangeScans()
+        {
+            // XDS110 is a composite USB device: after physical removal its COM
+            // interfaces can remain visible briefly. Repeat the inventory for a
+            // few seconds instead of relying on one early snapshot.
+            remainingDeviceChangeScans = DeviceChangeScanCount;
+            deviceChangeDebounceTimer.Stop();
+            deviceChangeDebounceTimer.Start();
         }
 
         /// <summary>
@@ -1221,6 +1349,10 @@ namespace WLESS_CHRG_CTRL
             deviceChangeDebounceTimer.Stop();
             PopulateSerialPorts();
             CheckForDisconnectedActivePorts();
+
+            remainingDeviceChangeScans--;
+            if (remainingDeviceChangeScans > 0)
+                deviceChangeDebounceTimer.Start();
         }
 
         private void MainWindow_SourceInitialized(object sender, EventArgs e)

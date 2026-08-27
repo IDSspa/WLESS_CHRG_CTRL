@@ -1,4 +1,6 @@
 ﻿using System;
+using Microsoft.Win32;
+using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Windows;
@@ -16,6 +18,10 @@ namespace WLESS_CHRG_CTRL
         public StopBits StopBitsValue { get; private set; } = StopBits.One;
         public bool IsApplied { get; private set; } = false;
 
+        private static string DefaultCaptureDumpDirectory => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "WLESS_CHRG_CTRL", "Captures");
+
         // Evita che gli SelectionChanged sparino durante LoadCurrentSettings()
         private readonly bool isInitializing = true;
 
@@ -32,6 +38,9 @@ namespace WLESS_CHRG_CTRL
 
             // Banned Ports
             txtBannedPorts.Text = settings.BannedPorts ?? string.Empty;
+            txtCaptureDumpDirectory.Text = string.IsNullOrWhiteSpace(settings.CaptureDumpDirectory)
+                ? DefaultCaptureDumpDirectory
+                : settings.CaptureDumpDirectory;
 
             // Baud Rate
             string baudStr = settings.SerialBaudRate.ToString();
@@ -124,6 +133,20 @@ namespace WLESS_CHRG_CTRL
             Close();
         }
 
+        private void BtnBrowseCaptureDumpDirectory_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFolderDialog
+            {
+                Title = "Select capture dump directory",
+                InitialDirectory = Directory.Exists(txtCaptureDumpDirectory.Text)
+                    ? txtCaptureDumpDirectory.Text
+                    : DefaultCaptureDumpDirectory
+            };
+
+            if (dialog.ShowDialog() == true)
+                txtCaptureDumpDirectory.Text = dialog.FolderName;
+        }
+
         private bool ValidateAndApply()
         {
             // Validate Baud Rate
@@ -182,6 +205,23 @@ namespace WLESS_CHRG_CTRL
                 .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Distinct(StringComparer.OrdinalIgnoreCase);
 
+            string captureDumpDirectory = txtCaptureDumpDirectory.Text.Trim();
+            if (string.IsNullOrWhiteSpace(captureDumpDirectory))
+                captureDumpDirectory = DefaultCaptureDumpDirectory;
+
+            try
+            {
+                captureDumpDirectory = Path.GetFullPath(captureDumpDirectory);
+                Directory.CreateDirectory(captureDumpDirectory);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Invalid capture dump directory: {ex.Message}", "Validation Error",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                txtCaptureDumpDirectory.Focus();
+                return false;
+            }
+
             // Apply to properties
             BannedPortsValue = string.Join(";", normalizedPorts);
             BaudRate = baudRate;
@@ -195,6 +235,7 @@ namespace WLESS_CHRG_CTRL
             Properties.Settings.Default.SerialDataBits = dataBits;
             Properties.Settings.Default.SerialParity = parity.ToString();
             Properties.Settings.Default.SerialStopBits = stopBits.ToString();
+            Properties.Settings.Default.CaptureDumpDirectory = captureDumpDirectory;
 
             UpdateConfigDisplay();
             return true;

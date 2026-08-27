@@ -4,8 +4,8 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:ports="clr-namespace:System.IO.Ports;assembly=System.IO.Ports"
         Title="Settings" 
-        Height="480" Width="540"
-        MinHeight="420" MinWidth="480"
+        Height="590" Width="600"
+        MinHeight="590" MinWidth="540"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
@@ -30,6 +30,8 @@
             <!-- Banned ports card -->
             <RowDefinition Height="Auto"/>
             <!-- Serial config card -->
+            <RowDefinition Height="Auto"/>
+            <!-- Capture dump directory card -->
             <RowDefinition Height="*"/>
             <!-- Info + spacer -->
             <RowDefinition Height="Auto"/>
@@ -151,9 +153,34 @@
             </Grid>
         </Border>
 
+        <!-- ============ Automatic Capture Dump Export ============ -->
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,14,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="AUTOMATIC CAPTURE DUMP EXPORT"
+                           Style="{StaticResource SectionCaption}" Margin="0,0,0,8"/>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" x:Name="txtCaptureDumpDirectory"
+                             Style="{StaticResource ModernTextBox}"
+                             ToolTip="Directory used for automatic CAPD and WPTCAPD CSV files"/>
+                    <Button Grid.Column="2" Content="BROWSE..."
+                            Click="BtnBrowseCaptureDumpDirectory_Click"
+                            Style="{StaticResource SecondaryButton}"/>
+                </Grid>
+            </Grid>
+        </Border>
+
         <!-- ============ Info ============ -->
-        <TextBlock Grid.Row="2" 
-                   Text="These settings will be applied to both Station and Vehicle serial ports." 
+        <TextBlock Grid.Row="3"
+                   Text="Serial settings apply to both ports. CAPD? and WPTCAPD? dumps are exported automatically."
                    Foreground="#888888" 
                    FontSize="11"
                    VerticalAlignment="Bottom"
@@ -161,7 +188,7 @@
                    Margin="0,10,0,0"/>
 
         <!-- ============ Status ============ -->
-        <TextBlock Grid.Row="3" 
+        <TextBlock Grid.Row="4"
                    x:Name="txtStatus"
                    Text=""
                    Foreground="SeaGreen"
@@ -169,7 +196,7 @@
                    Margin="0,4,0,0"/>
 
         <!-- ============ Buttons ============ -->
-        <StackPanel Grid.Row="4" 
+        <StackPanel Grid.Row="5"
                     Orientation="Horizontal" 
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0">
