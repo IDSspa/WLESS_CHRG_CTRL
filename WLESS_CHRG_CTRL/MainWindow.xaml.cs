@@ -7,6 +7,7 @@ using System.IO.Ports;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -36,23 +37,14 @@ namespace WLESS_CHRG_CTRL
         private readonly ObservableCollection<SerialMessage> stationMessages = [];
         private readonly ObservableCollection<SerialMessage> vehicleMessages = [];
 
-        private sealed class CaptureDump
+        private sealed class CaptureDump(string type, string samplePrefix, string endPrefix,
+            string header, DateTime timestamp)
         {
-            public CaptureDump(string type, string samplePrefix, string endPrefix,
-                string header, DateTime timestamp)
-            {
-                Type = type;
-                SamplePrefix = samplePrefix;
-                EndPrefix = endPrefix;
-                Header = header;
-                Timestamp = timestamp;
-            }
-
-            public string Type { get; }
-            public string SamplePrefix { get; }
-            public string EndPrefix { get; }
-            public string Header { get; }
-            public DateTime Timestamp { get; }
+            public string Type { get; } = type;
+            public string SamplePrefix { get; } = samplePrefix;
+            public string EndPrefix { get; } = endPrefix;
+            public string Header { get; } = header;
+            public DateTime Timestamp { get; } = timestamp;
             public List<string> Rows { get; } = [];
         }
 
@@ -952,14 +944,41 @@ namespace WLESS_CHRG_CTRL
         }
 
         /// <summary>
+        /// Estrae il testo del comando effettivo e dell'eventuale delay di trasmissione rimuovendo eventuali commenti
+        /// </summary>
+        /// <param name="message">Comando completo</param>
+        /// <returns></returns>
+        private static (string cmd, int delay) ExtractCmd(string message)
+        {
+            int delay = 0;
+
+            if (string.IsNullOrEmpty(message))
+                return (string.Empty, delay);
+
+            // Rimuove tutto da '#' fino alla fine
+            int hashPos = message.IndexOf('#');
+            if (hashPos >= 0)
+                message = message[..hashPos];
+
+            // Estrae e rimuove le sequenze @nnnnnn
+            message = Regex.Replace(message, @"@(\d+)", match =>
+            {
+                delay = int.Parse(match.Groups[1].Value);
+                return string.Empty;
+            });
+
+            return (message, delay);
+        }
+
+        /// <summary>
         /// Invia una sequenza di comandi con ritardo specificato tra uno e l'altro.
         /// Eseguito in background per non bloccare l'interfaccia utente.
         /// </summary>
         private async System.Threading.Tasks.Task SendCommandsSequenceAsync(
-            SerialPort port,
-            List<string> commands,
-            int delayMs,
-            ObservableCollection<SerialMessage> messageCollection)
+                SerialPort port,
+                List<string> commands,
+                int delayMs,
+                ObservableCollection<SerialMessage> messageCollection)
         {
             if (!port.IsOpen)
             {
@@ -977,7 +996,7 @@ namespace WLESS_CHRG_CTRL
 
             for (int i = 0; i < commands.Count; i++)
             {
-                string cmd = commands[i].Trim();
+                var (cmd, delay) = ExtractCmd(commands[i].Trim());
 
                 if (string.IsNullOrEmpty(cmd))
                     continue;
@@ -1011,10 +1030,12 @@ namespace WLESS_CHRG_CTRL
                     return;
                 }
 
+                int cmd_delay = delay != -1 ? delay : delayMs;
+
                 // Ritardo prima del prossimo comando (non dopo l'ultimo)
-                if (i < commands.Count - 1 && delayMs > 0)
+                if (i < commands.Count - 1 && cmd_delay > 0)
                 {
-                    await System.Threading.Tasks.Task.Delay(delayMs);
+                    await System.Threading.Tasks.Task.Delay(cmd_delay);
                 }
             }
 
@@ -1358,7 +1379,7 @@ namespace WLESS_CHRG_CTRL
         private void MainWindow_SourceInitialized(object sender, EventArgs e)
         {
             hwndSource = (HwndSource)PresentationSource.FromVisual(this);
-            
+
             if (hwndSource == null)
                 return;
 
