@@ -1,27 +1,17 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Windows;
 
 namespace WLESS_CHRG_CTRL
 {
-    /// <summary>
-    /// Rappresenta un comando con il suo delay opzionale (in ms).
-    /// </summary>
-    public class CommandWithDelay
-    {
-        public string Command { get; set; } = string.Empty;
-        public int Delay { get; set; } = 0;
-    }
-
     public partial class CmdLinesDialog : Window
     {
         /// <summary>
-        /// Lista dei comandi elaborati (una per elemento), popolata alla chiusura con OK.
+        /// Lista dei comandi (una riga per elemento), popolata alla chiusura con OK.
         /// </summary>
-        public List<CommandWithDelay> ParsedCommands { get; private set; } = [];
+        public List<string> CmdLines { get; private set; } = [];
 
         /// <summary>
         /// Ritardo tra comandi in millisecondi, popolato alla chiusura con OK.
@@ -78,40 +68,9 @@ namespace WLESS_CHRG_CTRL
             }
         }
 
-        /// <summary>
-        /// Estrae il comando effettivo da una riga, rimuovendo:
-        /// - Commenti preceduti da '#'
-        /// - Indicatore di delay '@numero'
-        /// Ritorna il comando pulito (senza caratteri speciali).
-        /// </summary>
-        private static string ExtractCommand(string line)
-        {
-            // Rimuovi commenti (tutto da # in poi)
-            int commentIndex = line.IndexOf('#');
-            if (commentIndex >= 0)
-                line = line[..commentIndex];
-
-            // Rimuovi il delay marker (@numero)
-            line = Regex.Replace(line, @"@\d+", "");
-
-            return line.Trim();
-        }
-
-        /// <summary>
-        /// Estrae il delay (in ms) da una riga, cercando @numero.
-        /// Se presente, ritorna il valore numerico; altrimenti ritorna 0.
-        /// </summary>
-        private static int ExtractDelay(string line)
-        {
-            var match = Regex.Match(line, @"@(\d+)");
-            if (match.Success && int.TryParse(match.Groups[1].Value, out int delay))
-                return delay;
-            return 0;
-        }
-
         private void BtnSend_Click(object sender, RoutedEventArgs e)
         {
-            // Parsa il delay globale
+            // Parsa il delay
             if (nudDelay.Value is null || nudDelay.Value < 0)
             {
                 MessageBox.Show("Insert a valid delay value (positive integer).",
@@ -120,7 +79,7 @@ namespace WLESS_CHRG_CTRL
                 return;
             }
 
-            // Parsa le righe di comando
+            // Parsa le righe di comando (esclude righe vuote)
             var lines = txtCmdLines.Text
                 .Split(["\r\n", "\n", "\r"], StringSplitOptions.None)
                 .Select(line => line.Trim())
@@ -135,31 +94,8 @@ namespace WLESS_CHRG_CTRL
                 return;
             }
 
-            // Elabora ogni riga: estrai comando e delay individuale
-            ParsedCommands = [];
-            foreach (var line in lines)
-            {
-                string command = ExtractCommand(line);
-                if (string.IsNullOrEmpty(command))
-                    continue; // Salta righe che diventano vuote dopo rimozione commenti
-
-                int lineDelay = ExtractDelay(line);
-                ParsedCommands.Add(new CommandWithDelay 
-                { 
-                    Command = command, 
-                    Delay = lineDelay 
-                });
-            }
-
-            if (ParsedCommands.Count == 0)
-            {
-                MessageBox.Show("No valid commands after parsing.",
-                    "No Commands", MessageBoxButton.OK, MessageBoxImage.Warning);
-                txtCmdLines.Focus();
-                return;
-            }
-
             CmdDelay = (int)nudDelay.Value;
+            CmdLines = lines;
 
             DialogResult = true;
             Close();
