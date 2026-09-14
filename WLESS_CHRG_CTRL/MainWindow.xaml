@@ -30,7 +30,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
@@ -151,6 +151,7 @@
                                   BorderThickness="0"
                                   SelectionMode="Extended"
                                   KeyDown="LvMessages_KeyDown"
+                                  MouseDoubleClick="LvMessages_MouseDoubleClick"
                                   Loaded="LvStationMessages_Loaded"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -196,6 +197,7 @@
                                   BorderThickness="0"
                                   SelectionMode="Extended"
                                   KeyDown="LvMessages_KeyDown"
+                                  MouseDoubleClick="LvMessages_MouseDoubleClick"
                                   Loaded="LvVehicleMessages_Loaded"
                                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -231,35 +233,61 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Station Command -->
-                <StackPanel Grid.Column="0">
-                    <Label Content="Station Command (press ENTER to send):"/>
-                    <TextBox x:Name="txtStationCommand" 
-                             Height="30" 
-                             VerticalContentAlignment="Center"
-                             KeyDown="TxtStationCommand_KeyDown"                            
-                             MouseDoubleClick="TxtStationCommand_MouseDoubleClick"
-                             AllowDrop="True"
-                             PreviewDragEnter="StationCommand_DragEnter"
-                             PreviewDragOver="StationCommand_DragEnter"
-                             PreviewDrop="StationCommand_Drop"                             
-                             ToolTip="Double click to open multi-line editor / ENTER to send single command"/>
-                </StackPanel>
+                <!-- Station commands -->
+                <Grid Grid.Column="0"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="0" ClipToBounds="True"><Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock Text="STATION SCRIPT" Style="{StaticResource SectionCaption}" Padding="12,10,12,8"/>
+                    <ListView Grid.Row="1" x:Name="lvStationScript" Style="{StaticResource ModernListView}" BorderThickness="0" AllowDrop="True" HorizontalContentAlignment="Stretch" ContextMenuOpening="Script_ContextMenuOpening"
+                              PreviewDragEnter="StationCommand_DragEnter" PreviewDragOver="StationCommand_DragEnter" PreviewDrop="StationCommand_Drop">
+                        <ListView.ContextMenu><ContextMenu><MenuItem Header="Save script..." Click="SaveStationScript_Click"/><Separator/><MenuItem Header="Clear script" Click="ClearStationScript_Click"/></ContextMenu></ListView.ContextMenu>
+                        <ListView.View><GridView ColumnHeaderContainerStyle="{StaticResource FlatGridViewHeader}"><GridViewColumn Header="Pos" Width="42" DisplayMemberBinding="{Binding Position}"/><GridViewColumn Header="Command" Width="250"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn><GridViewColumn Header="Delay" Width="75"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding DelayText, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0" ToolTip="Empty = default delay" KeyDown="ScriptDelay_KeyDown"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn></GridView></ListView.View>
+                    </ListView>
+                    <TextBox Grid.Row="1" x:Name="txtStationScript" Height="110" AcceptsReturn="True"
+                             Visibility="Collapsed"
+                             TextWrapping="NoWrap" FontFamily="Consolas"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                             AllowDrop="True" PreviewDragEnter="StationCommand_DragEnter"
+                             PreviewDragOver="StationCommand_DragEnter" PreviewDrop="StationCommand_Drop"
+                             ToolTip="Drop a .wcx script here"/>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
+                        <Button Content="▶" ToolTip="Run script" Width="28" Margin="2,0" Click="StationPlay_Click"/>
+                        <Button Content="Ⅱ" ToolTip="Pause or resume script" Width="28" Margin="2,0" Click="StationPause_Click"/>
+                        <Button Content="▶|" ToolTip="Step forward" Width="28" Margin="2,0" Click="StationStep_Click"/>
+                        <Button Content="■" ToolTip="Stop script" Width="28" Margin="2,0" Click="StationStop_Click"/>
+                        <Button Content="+" ToolTip="Insert command" Width="28" Margin="2,0" Click="StationAddCommand_Click"/>
+                        <Button Content="−" ToolTip="Remove selected command" Width="28" Margin="2,0" Click="StationRemoveCommand_Click"/>
+                        <Button Content="↑" ToolTip="Move command up" Width="28" Margin="2,0" Click="StationMoveUp_Click"/>
+                        <Button Content="↓" ToolTip="Move command down" Width="28" Margin="2,0" Click="StationMoveDown_Click"/>
+                    </StackPanel>
+                </Grid></Border><StackPanel Grid.Row="1" Margin="0,8,0,0"><Label Content="Station Command (press ENTER to send):"/><TextBox x:Name="txtStationCommand" Height="30" VerticalContentAlignment="Center" KeyDown="TxtStationCommand_KeyDown" ToolTip="ENTER to send single command"/></StackPanel></Grid>
 
-                <!-- Vehicle Command -->
-                <StackPanel Grid.Column="2">
-                    <Label Content="Vehicle Command (press ENTER to send):" HorizontalAlignment="Right"/>
-                    <TextBox x:Name="txtVehicleCommand" 
-                             Height="30" 
-                             VerticalContentAlignment="Center"
-                             KeyDown="TxtVehicleCommand_KeyDown"
-                             MouseDoubleClick="TxtVehicleCommand_MouseDoubleClick"
-                             AllowDrop="True"
-                             PreviewDragOver="VehicleCommand_DragEnter"
-                             PreviewDragEnter="VehicleCommand_DragEnter"
-                             PreviewDrop="VehicleCommand_Drop"                             
-                             ToolTip="Double click to open multi-line editor / ENTER to send single command"/>
-                </StackPanel>
+                <!-- Vehicle commands -->
+                <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Border Grid.Row="0" Style="{StaticResource CardBorder}" Padding="0" ClipToBounds="True"><Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <TextBlock Text="VEHICLE SCRIPT" Style="{StaticResource SectionCaption}" HorizontalAlignment="Right" Padding="12,10,12,8"/>
+                    <ListView Grid.Row="1" x:Name="lvVehicleScript" Style="{StaticResource ModernListView}" BorderThickness="0" AllowDrop="True" HorizontalContentAlignment="Stretch" ContextMenuOpening="Script_ContextMenuOpening"
+                              PreviewDragEnter="VehicleCommand_DragEnter" PreviewDragOver="VehicleCommand_DragEnter" PreviewDrop="VehicleCommand_Drop">
+                        <ListView.ContextMenu><ContextMenu><MenuItem Header="Save script..." Click="SaveVehicleScript_Click"/><Separator/><MenuItem Header="Clear script" Click="ClearVehicleScript_Click"/></ContextMenu></ListView.ContextMenu>
+                        <ListView.View><GridView ColumnHeaderContainerStyle="{StaticResource FlatGridViewHeader}"><GridViewColumn Header="Pos" Width="42" DisplayMemberBinding="{Binding Position}"/><GridViewColumn Header="Command" Width="250"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn><GridViewColumn Header="Delay" Width="75"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding DelayText, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0" ToolTip="Empty = default delay" KeyDown="ScriptDelay_KeyDown"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn></GridView></ListView.View>
+                    </ListView>
+                    <TextBox Grid.Row="1" x:Name="txtVehicleScript" Height="110" AcceptsReturn="True"
+                             Visibility="Collapsed"
+                             TextWrapping="NoWrap" FontFamily="Consolas"
+                             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                             AllowDrop="True" PreviewDragEnter="VehicleCommand_DragEnter"
+                             PreviewDragOver="VehicleCommand_DragEnter" PreviewDrop="VehicleCommand_Drop"
+                             ToolTip="Drop a .wcx script here"/>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
+                        <Button Content="▶" ToolTip="Run script" Width="28" Margin="2,0" Click="VehiclePlay_Click"/>
+                        <Button Content="Ⅱ" ToolTip="Pause or resume script" Width="28" Margin="2,0" Click="VehiclePause_Click"/>
+                        <Button Content="▶|" ToolTip="Step forward" Width="28" Margin="2,0" Click="VehicleStep_Click"/>
+                        <Button Content="■" ToolTip="Stop script" Width="28" Margin="2,0" Click="VehicleStop_Click"/>
+                        <Button Content="+" ToolTip="Insert command" Width="28" Margin="2,0" Click="VehicleAddCommand_Click"/>
+                        <Button Content="−" ToolTip="Remove selected command" Width="28" Margin="2,0" Click="VehicleRemoveCommand_Click"/>
+                        <Button Content="↑" ToolTip="Move command up" Width="28" Margin="2,0" Click="VehicleMoveUp_Click"/>
+                        <Button Content="↓" ToolTip="Move command down" Width="28" Margin="2,0" Click="VehicleMoveDown_Click"/>
+                    </StackPanel>
+                </Grid></Border><StackPanel Grid.Row="1" Margin="0,8,0,0"><Label Content="Vehicle Command (press ENTER to send):" HorizontalAlignment="Right"/><TextBox x:Name="txtVehicleCommand" Height="30" VerticalContentAlignment="Center" KeyDown="TxtVehicleCommand_KeyDown" ToolTip="ENTER to send single command"/></StackPanel></Grid>
             </Grid>
 
             <!-- Status Bar -->

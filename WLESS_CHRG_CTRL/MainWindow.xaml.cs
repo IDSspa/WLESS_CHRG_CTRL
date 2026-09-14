@@ -15,6 +15,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
+using System.Threading.Tasks;
 using Path = System.IO.Path;
 
 namespace WLESS_CHRG_CTRL
@@ -26,8 +27,38 @@ namespace WLESS_CHRG_CTRL
         public Brush TextColor { get; set; } = Brushes.Black;
     }
 
+    /// <summary>
+    /// Rappresenta una riga eseguibile di uno script .wcx.
+    /// DelayOverrideMilliseconds nullo indica che la riga usa il delay predefinito.
+    /// </summary>
+    public class ScriptCommand
+    {
+        public int Position { get; set; }
+        public string Command { get; set; } = string.Empty;
+        public int? DelayOverrideMilliseconds { get; set; }
+
+        public string DelayDisplay => DelayOverrideMilliseconds is int delay
+            ? $"{delay} ms"
+            : "default";
+        public string DelayText
+        {
+            get => DelayOverrideMilliseconds?.ToString() ?? string.Empty;
+            set => DelayOverrideMilliseconds = int.TryParse(value, out int delay) && delay >= 0 ? delay : null;
+        }
+    }
+
     public partial class MainWindow : Window
     {
+        private sealed class ScriptState
+        {
+            public List<string> Commands { get; set; } = [];
+            public int Index { get; set; }
+            public bool IsRunning { get; set; }
+            public bool IsPaused { get; set; }
+            public bool StopRequested { get; set; }
+            public bool StepRequested { get; set; }
+            public TaskCompletionSource<bool> ResumeSignal { get; set; }
+        }
         private bool isStationConnected = false;
         private bool isVehicleConnected = false;
 
@@ -36,6 +67,10 @@ namespace WLESS_CHRG_CTRL
 
         private readonly ObservableCollection<SerialMessage> stationMessages = [];
         private readonly ObservableCollection<SerialMessage> vehicleMessages = [];
+        private readonly ObservableCollection<ScriptCommand> stationScriptCommands = [];
+        private readonly ObservableCollection<ScriptCommand> vehicleScriptCommands = [];
+        private readonly ScriptState stationScriptState = new();
+        private readonly ScriptState vehicleScriptState = new();
 
         private sealed class CaptureDump(string type, string samplePrefix, string endPrefix,
             string header, DateTime timestamp)
@@ -168,6 +203,8 @@ namespace WLESS_CHRG_CTRL
 
             lvStationMessages.ItemsSource = stationMessages;
             lvVehicleMessages.ItemsSource = vehicleMessages;
+            lvStationScript.ItemsSource = stationScriptCommands;
+            lvVehicleScript.ItemsSource = vehicleScriptCommands;
 
             PopulateSerialPorts();
             ConfigureSerialPort(spStation);
@@ -950,7 +987,9 @@ namespace WLESS_CHRG_CTRL
         /// <returns></returns>
         private static (string cmd, int delay) ExtractCmd(string message)
         {
-            int delay = 0;
+            // -1 indica che il comando non specifica alcun delay e deve quindi
+            // usare quello predefinito configurato nel CmdLinesDialog.
+            int delay = -1;
 
             if (string.IsNullOrEmpty(message))
                 return (string.Empty, delay);
@@ -967,7 +1006,7 @@ namespace WLESS_CHRG_CTRL
                 return string.Empty;
             });
 
-            return (message, delay);
+            return (message.Trim(), delay);
         }
 
         /// <summary>
@@ -996,7 +1035,7 @@ namespace WLESS_CHRG_CTRL
 
             for (int i = 0; i < commands.Count; i++)
             {
-                var (cmd, delay) = ExtractCmd(commands[i].Trim());
+                var (cmd, delay) = ExtractCmd(commands[i]);
 
                 if (string.IsNullOrEmpty(cmd))
                     continue;
@@ -1013,7 +1052,7 @@ namespace WLESS_CHRG_CTRL
 
                 try
                 {
-                    string cmdWithNewline = cmd.EndsWith("\r\n") ? cmd : cmd + "\r\n";
+                    string cmdWithNewline = cmd.Trim().EndsWith("\r\n") ? cmd : cmd + "\r\n";
                     port.Write(cmdWithNewline);
 
                     uiDispatcher.Invoke(() =>
@@ -1172,8 +1211,7 @@ namespace WLESS_CHRG_CTRL
 
             if (dialog.ShowDialog() == true)
             {
-                _ = SendCommandsSequenceAsync(port, dialog.CmdLines, dialog.CmdDelay,
-                    messageCollection);
+                associatedTextBox.Text = string.Join(Environment.NewLine, dialog.CmdLines);
             }
         }
 
@@ -1411,6 +1449,208 @@ namespace WLESS_CHRG_CTRL
         }
 
         // ==================== CONTEXT MENU ====================
+        private static List<string> GetScriptCommands(ObservableCollection<ScriptCommand> commands) => commands
+            .Where(item => !string.IsNullOrWhiteSpace(item.Command))
+            .Select(item => item.DelayOverrideMilliseconds is int delay ? $"{item.Command} @{delay}" : item.Command).ToList();
+
+        private void StartScript(ScriptState state, ObservableCollection<ScriptCommand> editor, ListView listView, SerialPort port,
+            ObservableCollection<SerialMessage> messages)
+        {
+            if (!port.IsOpen)
+            {
+                AppendMessage(messages, "[ERROR] Port not open — script not started.", false);
+                return;
+            }
+            if (state.IsRunning)
+            {
+                if (state.IsPaused)
+                {
+                    state.IsPaused = false;
+                    state.ResumeSignal?.TrySetResult(true);
+                }
+                return;
+            }
+            if (!state.IsPaused)
+            {
+                state.Commands = GetScriptCommands(editor);
+                state.Index = 0;
+            }
+            if (state.Commands.Count == 0) return;
+            state.IsRunning = true; state.IsPaused = false; state.StopRequested = false;
+            _ = RunScriptAsync(state, listView, port, messages);
+        }
+
+        private async Task RunScriptAsync(ScriptState state, ListView listView, SerialPort port,
+            ObservableCollection<SerialMessage> messages)
+        {
+            while (state.Index < state.Commands.Count && !state.StopRequested)
+            {
+                if (state.IsPaused)
+                {
+                    state.ResumeSignal = new TaskCompletionSource<bool>();
+                    await state.ResumeSignal.Task;
+                    continue;
+                }
+                var (cmd, delay) = ExtractCmd(state.Commands[state.Index]);
+                state.Index++;
+                uiDispatcher.Invoke(() => { listView.SelectedIndex = state.Index - 1; listView.ScrollIntoView(listView.SelectedItem); });
+                if (!string.IsNullOrEmpty(cmd) && port.IsOpen)
+                {
+                    port.Write(cmd.EndsWith("\r\n") ? cmd : cmd + "\r\n");
+                    AppendMessage(messages, $"[TX] [{state.Index}/{state.Commands.Count}] {cmd}", true);
+                }
+                if (state.StepRequested)
+                {
+                    state.StepRequested = false;
+                    state.IsPaused = true;
+                }
+                int wait = delay >= 0 ? delay : Properties.Settings.Default.DefaultCommandDelay;
+                if (state.Index < state.Commands.Count && wait > 0) await Task.Delay(wait);
+            }
+            state.IsRunning = false;
+            if (!state.IsPaused) state.Index = state.StopRequested ? 0 : state.Index;
+        }
+
+        private void PauseScript(ScriptState state)
+        {
+            if (!state.IsRunning && !state.IsPaused) return;
+            state.IsPaused = !state.IsPaused;
+            if (!state.IsPaused) state.ResumeSignal?.TrySetResult(true);
+        }
+        private void StopScript(ScriptState state)
+        {
+            state.StopRequested = true; state.IsPaused = false; state.Index = 0;
+            state.ResumeSignal?.TrySetResult(true);
+        }
+        private void StepScript(ScriptState state, ObservableCollection<ScriptCommand> editor, SerialPort port,
+            ObservableCollection<SerialMessage> messages)
+        {
+            if (state.IsRunning)
+            {
+                if (state.IsPaused)
+                {
+                    state.StepRequested = true;
+                    state.IsPaused = false;
+                    state.ResumeSignal?.TrySetResult(true);
+                }
+                return;
+            }
+            state.Commands = GetScriptCommands(editor);
+            if (state.Index >= state.Commands.Count) state.Index = 0;
+            if (state.Commands.Count == 0) return;
+            if (!port.IsOpen)
+            {
+                AppendMessage(messages, "[ERROR] Port not open — step not executed.", false);
+                return;
+            }
+            var (cmd, _) = ExtractCmd(state.Commands[state.Index++]);
+            if (!string.IsNullOrEmpty(cmd)) { port.Write(cmd + "\r\n"); AppendMessage(messages, $"[TX] [step] {cmd}", true); }
+        }
+        private void StationPlay_Click(object s, RoutedEventArgs e) => StartScript(stationScriptState, stationScriptCommands, lvStationScript, spStation, stationMessages);
+        private void StationPause_Click(object s, RoutedEventArgs e) => PauseScript(stationScriptState);
+        private void StationStep_Click(object s, RoutedEventArgs e) => StepScript(stationScriptState, stationScriptCommands, spStation, stationMessages);
+        private void StationStop_Click(object s, RoutedEventArgs e) => StopScript(stationScriptState);
+        private void VehiclePlay_Click(object s, RoutedEventArgs e) => StartScript(vehicleScriptState, vehicleScriptCommands, lvVehicleScript, spVehicle, vehicleMessages);
+        private void VehiclePause_Click(object s, RoutedEventArgs e) => PauseScript(vehicleScriptState);
+        private void VehicleStep_Click(object s, RoutedEventArgs e) => StepScript(vehicleScriptState, vehicleScriptCommands, spVehicle, vehicleMessages);
+        private void VehicleStop_Click(object s, RoutedEventArgs e) => StopScript(vehicleScriptState);
+        private void InsertCommand(ObservableCollection<ScriptCommand> commands, ListView listView)
+        {
+            int index = listView.SelectedIndex < 0 ? commands.Count : listView.SelectedIndex + 1;
+            commands.Insert(index, new ScriptCommand());
+            for (int i = 0; i < commands.Count; i++) commands[i].Position = i + 1;
+            listView.SelectedIndex = index;
+            listView.ScrollIntoView(commands[index]);
+            uiDispatcher.BeginInvoke(DispatcherPriority.ContextIdle,
+                new Action(() => FocusCommandEditor(listView, index)));
+        }
+        private void StationAddCommand_Click(object s, RoutedEventArgs e) => InsertCommand(stationScriptCommands, lvStationScript);
+        private void VehicleAddCommand_Click(object s, RoutedEventArgs e) => InsertCommand(vehicleScriptCommands, lvVehicleScript);
+        private static void FocusCommandEditor(ListView listView, int index)
+        {
+            listView.UpdateLayout();
+            if (listView.ItemContainerGenerator.ContainerFromIndex(index) is not DependencyObject item)
+                return;
+
+            var editors = FindVisualDescendants<TextBox>(item);
+            if (editors.Count > 0)
+            {
+                editors[0].Focus();
+                editors[0].SelectAll();
+            }
+        }
+        private static List<T> FindVisualDescendants<T>(DependencyObject item) where T : DependencyObject
+        {
+            var results = new List<T>();
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(item); i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(item, i);
+                if (child is T result) results.Add(result);
+                results.AddRange(FindVisualDescendants<T>(child));
+            }
+            return results;
+        }
+        private void ScriptDelay_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Tab || sender is not DependencyObject source) return;
+            DependencyObject current = source;
+            while (current != null && current is not ListView) current = VisualTreeHelper.GetParent(current);
+            if (current == lvStationScript) InsertCommand(stationScriptCommands, lvStationScript);
+            else if (current == lvVehicleScript) InsertCommand(vehicleScriptCommands, lvVehicleScript);
+            e.Handled = true;
+        }
+        private static void Renumber(ObservableCollection<ScriptCommand> commands) { for (int i = 0; i < commands.Count; i++) commands[i].Position = i + 1; }
+        private static void RemoveCommand(ObservableCollection<ScriptCommand> commands, ListView list) { int i = list.SelectedIndex; if (i < 0) return; commands.RemoveAt(i); Renumber(commands); list.SelectedIndex = Math.Min(i, commands.Count - 1); }
+        private static void MoveCommand(ObservableCollection<ScriptCommand> commands, ListView list, int direction) { int i = list.SelectedIndex, target = i + direction; if (i < 0 || target < 0 || target >= commands.Count) return; commands.Move(i, target); Renumber(commands); list.SelectedIndex = target; }
+        private void StationRemoveCommand_Click(object s, RoutedEventArgs e) => RemoveCommand(stationScriptCommands, lvStationScript);
+        private void VehicleRemoveCommand_Click(object s, RoutedEventArgs e) => RemoveCommand(vehicleScriptCommands, lvVehicleScript);
+        private void StationMoveUp_Click(object s, RoutedEventArgs e) => MoveCommand(stationScriptCommands, lvStationScript, -1);
+        private void StationMoveDown_Click(object s, RoutedEventArgs e) => MoveCommand(stationScriptCommands, lvStationScript, 1);
+        private void VehicleMoveUp_Click(object s, RoutedEventArgs e) => MoveCommand(vehicleScriptCommands, lvVehicleScript, -1);
+        private void VehicleMoveDown_Click(object s, RoutedEventArgs e) => MoveCommand(vehicleScriptCommands, lvVehicleScript, 1);
+        private void ClearStationScript_Click(object s, RoutedEventArgs e) => stationScriptCommands.Clear();
+        private void ClearVehicleScript_Click(object s, RoutedEventArgs e) => vehicleScriptCommands.Clear();
+        private void SaveStationScript_Click(object s, RoutedEventArgs e) => SaveScript(stationScriptCommands);
+        private void SaveVehicleScript_Click(object s, RoutedEventArgs e) => SaveScript(vehicleScriptCommands);
+        private void Script_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+        {
+            if (sender is not ListView listView || listView.ContextMenu == null) return;
+            bool enabled = listView.Items.Count > 1;
+            foreach (object item in listView.ContextMenu.Items)
+                if (item is MenuItem menuItem) menuItem.IsEnabled = enabled;
+        }
+        private static void SaveScript(ObservableCollection<ScriptCommand> commands)
+        {
+            var dialog = new SaveFileDialog { Filter = $"WLESS Command Script (*{Properties.Resources.ScriptFileExtension})|*{Properties.Resources.ScriptFileExtension}" };
+            if (dialog.ShowDialog() == true) File.WriteAllLines(dialog.FileName, GetScriptCommands(commands));
+        }
+
+        private void LvMessages_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not ListView listView ||
+                FindAncestor<ListViewItem>(e.OriginalSource as DependencyObject) is null ||
+                listView.SelectedItem is not SerialMessage message)
+            {
+                return;
+            }
+
+            string sourceName = listView == lvStationMessages ? "Station" : "Vehicle";
+            new MessageDetailsDialog(sourceName, message) { Owner = this }.ShowDialog();
+        }
+
+        private static T FindAncestor<T>(DependencyObject element) where T : DependencyObject
+        {
+            while (element != null)
+            {
+                if (element is T ancestor)
+                    return ancestor;
+
+                element = VisualTreeHelper.GetParent(element);
+            }
+
+            return null;
+        }
+
         private void Vehicle_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             MenuParseVehicle.IsEnabled = lvVehicleMessages.SelectedItem != null;
@@ -1463,12 +1703,12 @@ namespace WLESS_CHRG_CTRL
 
         private void TxtStationCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            OpenCmdLinesDialog(spStation, txtStationCommand, stationMessages);
+            OpenCmdLinesDialog(spStation, txtStationScript, stationMessages);
         }
 
         private void TxtVehicleCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
-            OpenCmdLinesDialog(spVehicle, txtVehicleCommand, vehicleMessages);
+            OpenCmdLinesDialog(spVehicle, txtVehicleScript, vehicleMessages);
         }
 
         // ==================== MAIN MENU ====================
@@ -1512,12 +1752,12 @@ namespace WLESS_CHRG_CTRL
 
         private void MenuLoadStationScript_Click(object sender, RoutedEventArgs e)
         {
-            LoadScriptFromDialog(spStation, txtStationCommand, stationMessages);
+            LoadScriptFromDialog(spStation, txtStationScript, stationMessages);
         }
 
         private void MenuLoadVehicleScript_Click(object sender, RoutedEventArgs e)
         {
-            LoadScriptFromDialog(spVehicle, txtVehicleCommand, vehicleMessages);
+            LoadScriptFromDialog(spVehicle, txtVehicleScript, vehicleMessages);
         }
 
         private void LoadScriptFromDialog(SerialPort port, TextBox associatedTextBox,
@@ -1553,7 +1793,7 @@ namespace WLESS_CHRG_CTRL
                 return;
             }
 
-            OpenCmdLinesDialog(spStation, txtStationCommand, stationMessages, filePath);
+            LoadScriptFile(filePath, stationScriptCommands);
         }
 
         private void VehicleCommand_DragEnter(object sender, DragEventArgs e)
@@ -1572,7 +1812,18 @@ namespace WLESS_CHRG_CTRL
                 return;
             }
 
-            OpenCmdLinesDialog(spVehicle, txtVehicleCommand, vehicleMessages, filePath);
+            LoadScriptFile(filePath, vehicleScriptCommands);
+        }
+
+        private static void LoadScriptFile(string filePath, ObservableCollection<ScriptCommand> commands)
+        {
+            commands.Clear();
+            foreach (string line in File.ReadLines(filePath))
+            {
+                var (command, delay) = ExtractCmd(line);
+                if (!string.IsNullOrWhiteSpace(command))
+                    commands.Add(new ScriptCommand { Position = commands.Count + 1, Command = command, DelayOverrideMilliseconds = delay < 0 ? null : delay });
+            }
         }
     }
 }
