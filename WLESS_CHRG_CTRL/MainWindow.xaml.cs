@@ -760,7 +760,7 @@ namespace WLESS_CHRG_CTRL
                     string fragment = uqFragments[i];
 
                     // Aggiungi virgola di giunzione se necessario
-                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
+                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(","))
                     {
                         sb.Append(',');
                     }
@@ -839,7 +839,7 @@ namespace WLESS_CHRG_CTRL
                     string fragment = hfcFragments[i];
 
                     // Aggiungi virgola di giunzione se necessario
-                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
+                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(","))
                     {
                         sb.Append(',');
                     }
@@ -919,7 +919,7 @@ namespace WLESS_CHRG_CTRL
                     string fragment = uqFragments[i];
 
                     // Aggiungi virgola di giunzione se necessario
-                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(','))
+                    if (i > 0 && sb.Length > 0 && sb[^1] != ',' && !fragment.StartsWith(","))
                     {
                         sb.Append(',');
                     }

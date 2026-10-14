@@ -136,16 +136,22 @@ namespace WLESS_CHRG_CTRL
 
         private void BtnBrowseCaptureDumpDirectory_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new OpenFolderDialog
+            // FolderBrowserDialog (WinForms): OpenFolderDialog di Microsoft.Win32
+            // esiste solo in WPF per .NET 8+, non su .NET Framework 4.8
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                Title = "Select capture dump directory",
-                InitialDirectory = Directory.Exists(txtCaptureDumpDirectory.Text)
-                    ? txtCaptureDumpDirectory.Text
-                    : DefaultCaptureDumpDirectory
-            };
+                dialog.Description = "Select capture dump directory";
+                dialog.ShowNewFolderButton = true;
 
-            if (dialog.ShowDialog() == true)
-                txtCaptureDumpDirectory.Text = dialog.FolderName;
+                string initialDirectory = Directory.Exists(txtCaptureDumpDirectory.Text)
+                    ? txtCaptureDumpDirectory.Text
+                    : DefaultCaptureDumpDirectory;
+                if (Directory.Exists(initialDirectory))
+                    dialog.SelectedPath = initialDirectory;
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                    txtCaptureDumpDirectory.Text = dialog.SelectedPath;
+            }
         }
 
         private bool ValidateAndApply()
@@ -203,7 +209,9 @@ namespace WLESS_CHRG_CTRL
 
             // Normalizza Banned Ports (trim + rimuovi duplicati/vuoti)
             var normalizedPorts = txtBannedPorts.Text
-                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Split(';')
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase);
 
             string captureDumpDirectory = txtCaptureDumpDirectory.Text.Trim();

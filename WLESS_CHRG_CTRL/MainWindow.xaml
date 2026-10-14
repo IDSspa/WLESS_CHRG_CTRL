@@ -240,6 +240,11 @@
                     <ListView Grid.Row="1" x:Name="lvStationScript" Style="{StaticResource ModernListView}" BorderThickness="0" AllowDrop="True" HorizontalContentAlignment="Stretch" ContextMenuOpening="Script_ContextMenuOpening"
                               PreviewDragEnter="StationCommand_DragEnter" PreviewDragOver="StationCommand_DragEnter" PreviewDrop="StationCommand_Drop">
                         <ListView.ContextMenu><ContextMenu><MenuItem Header="Save script..." Click="SaveStationScript_Click"/><Separator/><MenuItem Header="Clear script" Click="ClearStationScript_Click"/></ContextMenu></ListView.ContextMenu>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.View><GridView ColumnHeaderContainerStyle="{StaticResource FlatGridViewHeader}"><GridViewColumn Header="Pos" Width="42" DisplayMemberBinding="{Binding Position}"/><GridViewColumn Header="Command" Width="250"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn><GridViewColumn Header="Delay" Width="75"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding DelayText, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0" ToolTip="Empty = default delay" KeyDown="ScriptDelay_KeyDown"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn></GridView></ListView.View>
                     </ListView>
                     <TextBox Grid.Row="1" x:Name="txtStationScript" Height="110" AcceptsReturn="True"
@@ -268,6 +273,11 @@
                     <ListView Grid.Row="1" x:Name="lvVehicleScript" Style="{StaticResource ModernListView}" BorderThickness="0" AllowDrop="True" HorizontalContentAlignment="Stretch" ContextMenuOpening="Script_ContextMenuOpening"
                               PreviewDragEnter="VehicleCommand_DragEnter" PreviewDragOver="VehicleCommand_DragEnter" PreviewDrop="VehicleCommand_Drop">
                         <ListView.ContextMenu><ContextMenu><MenuItem Header="Save script..." Click="SaveVehicleScript_Click"/><Separator/><MenuItem Header="Clear script" Click="ClearVehicleScript_Click"/></ContextMenu></ListView.ContextMenu>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.View><GridView ColumnHeaderContainerStyle="{StaticResource FlatGridViewHeader}"><GridViewColumn Header="Pos" Width="42" DisplayMemberBinding="{Binding Position}"/><GridViewColumn Header="Command" Width="250"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding Command, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn><GridViewColumn Header="Delay" Width="75"><GridViewColumn.CellTemplate><DataTemplate><TextBox Text="{Binding DelayText, UpdateSourceTrigger=PropertyChanged}" BorderThickness="0" ToolTip="Empty = default delay" KeyDown="ScriptDelay_KeyDown"/></DataTemplate></GridViewColumn.CellTemplate></GridViewColumn></GridView></ListView.View>
                     </ListView>
                     <TextBox Grid.Row="1" x:Name="txtVehicleScript" Height="110" AcceptsReturn="True"

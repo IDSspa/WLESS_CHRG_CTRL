@@ -1,0 +1,74 @@
+<Window x:Class="WLESS_CHRG_CTRL.MessageDetailsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Message Details"
+        Height="420" Width="600"
+        MinHeight="280" MinWidth="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="CanResize"
+        Background="White">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="MESSAGE DETAILS" Style="{StaticResource SectionCaption}"/>
+            <TextBlock x:Name="txtHeaderTitle"
+                       Text="Message"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <!-- Badge sorgente / orario -->
+        <Border Grid.Row="1" Style="{StaticResource InfoBadge}"
+                HorizontalAlignment="Left" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="txtSource"
+                           VerticalAlignment="Center" FontSize="11"
+                           Foreground="#2D7DD2" FontWeight="SemiBold"/>
+                <TextBlock x:Name="txtTime"
+                           VerticalAlignment="Center" FontSize="11"
+                           Foreground="#2D7DD2" Margin="12,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Testo completo del messaggio -->
+        <Border Grid.Row="2" CornerRadius="8" BorderBrush="#CCCCCC" BorderThickness="1">
+            <TextBox x:Name="txtMessage"
+                     IsReadOnly="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     Padding="10"
+                     BorderThickness="0"
+                     Background="#FCFCFC"/>
+        </Border>
+
+        <!-- Pulsanti -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,16,0,0">
+            <Button x:Name="btnCopy"
+                    Content="COPY"
+                    Click="BtnCopy_Click"
+                    Style="{StaticResource SecondaryButton}"
+                    Margin="0,0,8,0"/>
+            <Button x:Name="btnClose"
+                    Content="CLOSE"
+                    Click="BtnClose_Click"
+                    Style="{StaticResource PrimaryButton}"
+                    IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>
