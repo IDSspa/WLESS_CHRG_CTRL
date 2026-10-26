@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WLESS_CHRG_SCRIPT formatVersion="1.0" defaultCommandDelayMs="300">
+  <STATION serialPort="COM26">
+# STATION script
+# Insert one UART command per line.
+# Local directives (not sent over UART):
+# !DELAY 1000
+# !PAUSE
+# !ALERT "Operator confirmation message"
+  </STATION>
+  <VEHICLE serialPort="COM25">
+# VEHICLE script
+# Insert one UART command per line.
+# Local directives (not sent over UART):
+# !DELAY 1000
+# !PAUSE
+# !ALERT "Operator confirmation message"
+  </VEHICLE>
+</WLESS_CHRG_SCRIPT>

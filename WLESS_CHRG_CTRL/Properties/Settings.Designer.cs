@@ -94,10 +94,5 @@ namespace WLESS_CHRG_CTRL.Properties {
                 this["CaptureDumpDirectory"] = value;
             }
         }
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("500")]
-        public int DefaultCommandDelay { get { return ((int)(this["DefaultCommandDelay"])); } set { this["DefaultCommandDelay"] = value; } }
-
     }
 }

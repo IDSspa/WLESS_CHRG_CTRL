@@ -2,12 +2,14 @@ using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.IO.Ports;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -28,22 +30,95 @@ namespace WLESS_CHRG_CTRL
     }
 
     /// <summary>
-    /// Rappresenta una riga eseguibile di uno script .wcx.
-    /// DelayOverrideMilliseconds nullo indica che la riga usa il delay predefinito.
+    /// Rappresenta una riga del documento XML .wcx, inclusi commenti e direttive.
     /// </summary>
-    public class ScriptCommand
+    public class ScriptLine : INotifyPropertyChanged
     {
-        public int Position { get; set; }
-        public string Command { get; set; } = string.Empty;
-        public int? DelayOverrideMilliseconds { get; set; }
+        public enum LineKind { Empty, Comment, Command, Pause, Delay, Alert, Invalid }
 
-        public string DelayDisplay => DelayOverrideMilliseconds is int delay
-            ? $"{delay} ms"
-            : "default";
-        public string DelayText
+        private string text = string.Empty;
+        public int Position { get; set; }
+
+        public string Text
         {
-            get => DelayOverrideMilliseconds?.ToString() ?? string.Empty;
-            set => DelayOverrideMilliseconds = int.TryParse(value, out int delay) && delay >= 0 ? delay : null;
+            get => text;
+            set
+            {
+                if (text == value) return;
+                text = value ?? string.Empty;
+                Classify();
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Text)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Kind)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TypeDisplay)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextColor)));
+            }
+        }
+
+        public LineKind Kind { get; private set; }
+        public int DelayMilliseconds { get; private set; }
+        public string AlertMessage { get; private set; } = string.Empty;
+        public string CommandText { get; private set; } = string.Empty;
+        public string Error { get; private set; } = string.Empty;
+        public string TypeDisplay => Kind.ToString().ToUpperInvariant();
+        public Brush TextColor => Kind switch
+        {
+            LineKind.Comment => Brushes.Gray,
+            LineKind.Pause => Brushes.DarkOrange,
+            LineKind.Delay => Brushes.SteelBlue,
+            LineKind.Alert => Brushes.DarkMagenta,
+            LineKind.Invalid => Brushes.Red,
+            _ => Brushes.Black
+        };
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public ScriptLine() => Classify();
+
+        private void Classify()
+        {
+            DelayMilliseconds = 0;
+            AlertMessage = string.Empty;
+            CommandText = string.Empty;
+            Error = string.Empty;
+            string trimmed = text.Trim();
+
+            if (trimmed.Length == 0) { Kind = LineKind.Empty; return; }
+            if (trimmed.StartsWith("#", StringComparison.Ordinal)) { Kind = LineKind.Comment; return; }
+
+            if (trimmed.StartsWith("!", StringComparison.Ordinal))
+            {
+                if (Regex.IsMatch(trimmed, @"^!PAUSE\s*(?:#.*)?$", RegexOptions.IgnoreCase))
+                {
+                    Kind = LineKind.Pause;
+                    return;
+                }
+
+                Match delayMatch = Regex.Match(trimmed,
+                    @"^!DELAY\s+(\d+)\s*(?:#.*)?$", RegexOptions.IgnoreCase);
+                if (delayMatch.Success && int.TryParse(delayMatch.Groups[1].Value, out int delay))
+                {
+                    Kind = LineKind.Delay;
+                    DelayMilliseconds = delay;
+                    return;
+                }
+
+                Match alertMatch = Regex.Match(trimmed,
+                    "^!ALERT\\s+\"([^\"]+)\"\\s*(?:#.*)?$", RegexOptions.IgnoreCase);
+                if (alertMatch.Success)
+                {
+                    Kind = LineKind.Alert;
+                    AlertMessage = alertMatch.Groups[1].Value;
+                    return;
+                }
+
+                Kind = LineKind.Invalid;
+                Error = "Unknown or invalid script directive.";
+                return;
+            }
+
+            int commentIndex = text.IndexOf('#');
+            CommandText = (commentIndex >= 0 ? text[..commentIndex] : text).Trim();
+            Kind = CommandText.Length == 0 ? LineKind.Comment : LineKind.Command;
         }
     }
 
@@ -51,13 +126,14 @@ namespace WLESS_CHRG_CTRL
     {
         private sealed class ScriptState
         {
-            public List<string> Commands { get; set; } = [];
+            public List<ScriptLine> Lines { get; set; } = [];
             public int Index { get; set; }
             public bool IsRunning { get; set; }
             public bool IsPaused { get; set; }
             public bool StopRequested { get; set; }
             public bool StepRequested { get; set; }
             public TaskCompletionSource<bool> ResumeSignal { get; set; }
+            public CancellationTokenSource Cancellation { get; set; }
         }
         private bool isStationConnected = false;
         private bool isVehicleConnected = false;
@@ -67,10 +143,12 @@ namespace WLESS_CHRG_CTRL
 
         private readonly ObservableCollection<SerialMessage> stationMessages = [];
         private readonly ObservableCollection<SerialMessage> vehicleMessages = [];
-        private readonly ObservableCollection<ScriptCommand> stationScriptCommands = [];
-        private readonly ObservableCollection<ScriptCommand> vehicleScriptCommands = [];
+        private readonly ObservableCollection<ScriptLine> stationScriptCommands = [];
+        private readonly ObservableCollection<ScriptLine> vehicleScriptCommands = [];
         private readonly ScriptState stationScriptState = new();
         private readonly ScriptState vehicleScriptState = new();
+        private string stationScriptPort = string.Empty;
+        private string vehicleScriptPort = string.Empty;
 
         private sealed class CaptureDump(string type, string samplePrefix, string endPrefix,
             string header, DateTime timestamp)
@@ -1429,6 +1507,8 @@ namespace WLESS_CHRG_CTRL
         {
             try
             {
+                StopScript(stationScriptState);
+                StopScript(vehicleScriptState);
                 deviceChangeDebounceTimer.Stop();
 
                 if (deviceNotificationHandle != IntPtr.Zero)
@@ -1448,19 +1528,61 @@ namespace WLESS_CHRG_CTRL
             base.OnClosing(e);
         }
 
-        // ==================== CONTEXT MENU ====================
-        private static List<string> GetScriptCommands(ObservableCollection<ScriptCommand> commands) => commands
-            .Where(item => !string.IsNullOrWhiteSpace(item.Command))
-            .Select(item => item.DelayOverrideMilliseconds is int delay ? $"{item.Command} @{delay}" : item.Command).ToList();
+        // ==================== SCRIPT EXECUTION ====================
+        private bool TryGetScriptDefaultDelay(out int delay)
+        {
+            if (int.TryParse(txtScriptDefaultDelay.Text, out delay) && delay >= 0)
+                return true;
 
-        private void StartScript(ScriptState state, ObservableCollection<ScriptCommand> editor, ListView listView, SerialPort port,
-            ObservableCollection<SerialMessage> messages)
+            MessageBox.Show("Default command delay must be a non-negative integer.", "Invalid Script",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            txtScriptDefaultDelay.Focus();
+            return false;
+        }
+
+        private static ScriptLine? FindInvalidLine(IEnumerable<ScriptLine> lines) =>
+            lines.FirstOrDefault(line => line.Kind == ScriptLine.LineKind.Invalid);
+
+        private bool ValidateScript(ObservableCollection<ScriptLine> editor, string role, out int defaultDelay)
+        {
+            defaultDelay = 0;
+            ScriptLine? invalid = FindInvalidLine(editor);
+            if (invalid != null)
+            {
+                MessageBox.Show($"{role} line {invalid.Position}: {invalid.Error}", "Invalid Script",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+            return TryGetScriptDefaultDelay(out defaultDelay);
+        }
+
+        private bool ValidateScriptPort(SerialPort port, string expectedPort, string role,
+            ObservableCollection<SerialMessage> messages, bool warnOnMismatch = false)
         {
             if (!port.IsOpen)
             {
-                AppendMessage(messages, "[ERROR] Port not open — script not started.", false);
-                return;
+                string requirement = string.IsNullOrWhiteSpace(expectedPort)
+                    ? string.Empty
+                    : $" The script requires {expectedPort}.";
+                AppendMessage(messages, $"[ERROR] {role} serial port is not open.{requirement}", false);
+                return false;
             }
+
+            // The XML port is a selection hint, not an execution constraint: COM
+            // numbering may legitimately change after device re-enumeration.
+            if (!string.IsNullOrWhiteSpace(expectedPort) &&
+                !string.Equals(port.PortName, expectedPort, StringComparison.OrdinalIgnoreCase))
+            {
+                if (warnOnMismatch)
+                    AppendMessage(messages,
+                        $"[WARNING] {role} script declares {expectedPort}; using connected port {port.PortName}.", false);
+            }
+            return true;
+        }
+
+        private void StartScript(ScriptState state, ObservableCollection<ScriptLine> editor, ListView listView,
+            SerialPort port, string expectedPort, string role, ObservableCollection<SerialMessage> messages)
+        {
             if (state.IsRunning)
             {
                 if (state.IsPaused)
@@ -1470,45 +1592,106 @@ namespace WLESS_CHRG_CTRL
                 }
                 return;
             }
-            if (!state.IsPaused)
-            {
-                state.Commands = GetScriptCommands(editor);
-                state.Index = 0;
-            }
-            if (state.Commands.Count == 0) return;
-            state.IsRunning = true; state.IsPaused = false; state.StopRequested = false;
-            _ = RunScriptAsync(state, listView, port, messages);
+            if (!ValidateScript(editor, role, out int defaultDelay) ||
+                !ValidateScriptPort(port, expectedPort, role, messages, warnOnMismatch: true)) return;
+
+            state.Lines = editor.ToList();
+            state.Index = 0;
+            state.IsRunning = true;
+            state.IsPaused = false;
+            state.StopRequested = false;
+            state.StepRequested = false;
+            state.Cancellation?.Dispose();
+            state.Cancellation = new CancellationTokenSource();
+            _ = RunScriptAsync(state, listView, port, expectedPort, role, defaultDelay, messages);
         }
 
+        private static bool HasFollowingExecutableLine(IReadOnlyList<ScriptLine> lines, int index) =>
+            lines.Skip(index).Any(line => line.Kind != ScriptLine.LineKind.Empty && line.Kind != ScriptLine.LineKind.Comment);
+
         private async Task RunScriptAsync(ScriptState state, ListView listView, SerialPort port,
-            ObservableCollection<SerialMessage> messages)
+            string expectedPort, string role, int defaultDelay, ObservableCollection<SerialMessage> messages)
         {
-            while (state.Index < state.Commands.Count && !state.StopRequested)
+            try
             {
-                if (state.IsPaused)
+                while (state.Index < state.Lines.Count && !state.StopRequested)
                 {
-                    state.ResumeSignal = new TaskCompletionSource<bool>();
-                    await state.ResumeSignal.Task;
-                    continue;
+                    if (state.IsPaused)
+                    {
+                        state.ResumeSignal = new TaskCompletionSource<bool>();
+                        await state.ResumeSignal.Task;
+                        continue;
+                    }
+
+                    ScriptLine line = state.Lines[state.Index++];
+                    int selectedIndex = state.Index - 1;
+                    uiDispatcher.Invoke(() =>
+                    {
+                        listView.SelectedIndex = selectedIndex;
+                        listView.ScrollIntoView(listView.SelectedItem);
+                    });
+
+                    bool executable = line.Kind != ScriptLine.LineKind.Empty && line.Kind != ScriptLine.LineKind.Comment;
+                    switch (line.Kind)
+                    {
+                        case ScriptLine.LineKind.Empty:
+                        case ScriptLine.LineKind.Comment:
+                            continue;
+                        case ScriptLine.LineKind.Command:
+                            if (!ValidateScriptPort(port, expectedPort, role, messages))
+                                throw new IOException($"{role} serial port is no longer available.");
+                            port.Write(line.CommandText + "\r\n");
+                            AppendMessage(messages, $"[TX] [{state.Index}/{state.Lines.Count}] {line.CommandText}", true);
+                            if (defaultDelay > 0 && HasFollowingExecutableLine(state.Lines, state.Index))
+                                await Task.Delay(defaultDelay, state.Cancellation!.Token);
+                            break;
+                        case ScriptLine.LineKind.Delay:
+                            AppendMessage(messages, $"[SCRIPT] Delay {line.DelayMilliseconds} ms", true);
+                            if (line.DelayMilliseconds > 0)
+                                await Task.Delay(line.DelayMilliseconds, state.Cancellation!.Token);
+                            break;
+                        case ScriptLine.LineKind.Pause:
+                            state.IsPaused = true;
+                            AppendMessage(messages, $"[SCRIPT] Paused at {role} line {line.Position}.", true);
+                            break;
+                        case ScriptLine.LineKind.Alert:
+                            AlertDialogAction alertAction = new ScriptAlertDialog(role, line.AlertMessage)
+                            {
+                                Owner = this
+                            }.ShowAlert();
+                            if (alertAction == AlertDialogAction.Pause)
+                            {
+                                state.IsPaused = true;
+                                AppendMessage(messages, $"[SCRIPT] Paused by operator at {role} alert line {line.Position}.", true);
+                            }
+                            else if (alertAction == AlertDialogAction.Stop)
+                            {
+                                AppendMessage(messages, $"[SCRIPT] Stopped by operator at {role} alert line {line.Position}.", false);
+                                StopScript(state);
+                            }
+                            break;
+                        case ScriptLine.LineKind.Invalid:
+                            throw new InvalidDataException(line.Error);
+                    }
+
+                    if (executable && state.StepRequested)
+                    {
+                        state.StepRequested = false;
+                        state.IsPaused = true;
+                    }
                 }
-                var (cmd, delay) = ExtractCmd(state.Commands[state.Index]);
-                state.Index++;
-                uiDispatcher.Invoke(() => { listView.SelectedIndex = state.Index - 1; listView.ScrollIntoView(listView.SelectedItem); });
-                if (!string.IsNullOrEmpty(cmd) && port.IsOpen)
-                {
-                    port.Write(cmd.EndsWith("\r\n") ? cmd : cmd + "\r\n");
-                    AppendMessage(messages, $"[TX] [{state.Index}/{state.Commands.Count}] {cmd}", true);
-                }
-                if (state.StepRequested)
-                {
-                    state.StepRequested = false;
-                    state.IsPaused = true;
-                }
-                int wait = delay >= 0 ? delay : Properties.Settings.Default.DefaultCommandDelay;
-                if (state.Index < state.Commands.Count && wait > 0) await Task.Delay(wait);
             }
-            state.IsRunning = false;
-            if (!state.IsPaused) state.Index = state.StopRequested ? 0 : state.Index;
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
+            {
+                AppendMessage(messages, $"[ERROR] Script stopped: {ex.Message}", false);
+                state.StopRequested = true;
+            }
+            finally
+            {
+                state.IsRunning = false;
+                if (state.StopRequested) state.Index = 0;
+            }
         }
 
         private void PauseScript(ScriptState state)
@@ -1520,10 +1703,11 @@ namespace WLESS_CHRG_CTRL
         private void StopScript(ScriptState state)
         {
             state.StopRequested = true; state.IsPaused = false; state.Index = 0;
+            state.Cancellation?.Cancel();
             state.ResumeSignal?.TrySetResult(true);
         }
-        private void StepScript(ScriptState state, ObservableCollection<ScriptCommand> editor, SerialPort port,
-            ObservableCollection<SerialMessage> messages)
+        private void StepScript(ScriptState state, ObservableCollection<ScriptLine> editor, ListView listView,
+            SerialPort port, string expectedPort, string role, ObservableCollection<SerialMessage> messages)
         {
             if (state.IsRunning)
             {
@@ -1535,29 +1719,31 @@ namespace WLESS_CHRG_CTRL
                 }
                 return;
             }
-            state.Commands = GetScriptCommands(editor);
-            if (state.Index >= state.Commands.Count) state.Index = 0;
-            if (state.Commands.Count == 0) return;
-            if (!port.IsOpen)
-            {
-                AppendMessage(messages, "[ERROR] Port not open — step not executed.", false);
-                return;
-            }
-            var (cmd, _) = ExtractCmd(state.Commands[state.Index++]);
-            if (!string.IsNullOrEmpty(cmd)) { port.Write(cmd + "\r\n"); AppendMessage(messages, $"[TX] [step] {cmd}", true); }
+            if (!ValidateScript(editor, role, out int defaultDelay) ||
+                !ValidateScriptPort(port, expectedPort, role, messages, warnOnMismatch: true)) return;
+            state.Lines = editor.ToList();
+            if (state.Index >= state.Lines.Count) state.Index = 0;
+            if (state.Lines.Count == 0) return;
+            state.IsRunning = true;
+            state.IsPaused = false;
+            state.StopRequested = false;
+            state.StepRequested = true;
+            state.Cancellation?.Dispose();
+            state.Cancellation = new CancellationTokenSource();
+            _ = RunScriptAsync(state, listView, port, expectedPort, role, defaultDelay, messages);
         }
-        private void StationPlay_Click(object s, RoutedEventArgs e) => StartScript(stationScriptState, stationScriptCommands, lvStationScript, spStation, stationMessages);
+        private void StationPlay_Click(object s, RoutedEventArgs e) => StartScript(stationScriptState, stationScriptCommands, lvStationScript, spStation, stationScriptPort, "Station", stationMessages);
         private void StationPause_Click(object s, RoutedEventArgs e) => PauseScript(stationScriptState);
-        private void StationStep_Click(object s, RoutedEventArgs e) => StepScript(stationScriptState, stationScriptCommands, spStation, stationMessages);
+        private void StationStep_Click(object s, RoutedEventArgs e) => StepScript(stationScriptState, stationScriptCommands, lvStationScript, spStation, stationScriptPort, "Station", stationMessages);
         private void StationStop_Click(object s, RoutedEventArgs e) => StopScript(stationScriptState);
-        private void VehiclePlay_Click(object s, RoutedEventArgs e) => StartScript(vehicleScriptState, vehicleScriptCommands, lvVehicleScript, spVehicle, vehicleMessages);
+        private void VehiclePlay_Click(object s, RoutedEventArgs e) => StartScript(vehicleScriptState, vehicleScriptCommands, lvVehicleScript, spVehicle, vehicleScriptPort, "Vehicle", vehicleMessages);
         private void VehiclePause_Click(object s, RoutedEventArgs e) => PauseScript(vehicleScriptState);
-        private void VehicleStep_Click(object s, RoutedEventArgs e) => StepScript(vehicleScriptState, vehicleScriptCommands, spVehicle, vehicleMessages);
+        private void VehicleStep_Click(object s, RoutedEventArgs e) => StepScript(vehicleScriptState, vehicleScriptCommands, lvVehicleScript, spVehicle, vehicleScriptPort, "Vehicle", vehicleMessages);
         private void VehicleStop_Click(object s, RoutedEventArgs e) => StopScript(vehicleScriptState);
-        private void InsertCommand(ObservableCollection<ScriptCommand> commands, ListView listView)
+        private void InsertCommand(ObservableCollection<ScriptLine> commands, ListView listView)
         {
             int index = listView.SelectedIndex < 0 ? commands.Count : listView.SelectedIndex + 1;
-            commands.Insert(index, new ScriptCommand());
+            commands.Insert(index, new ScriptLine());
             for (int i = 0; i < commands.Count; i++) commands[i].Position = i + 1;
             listView.SelectedIndex = index;
             listView.ScrollIntoView(commands[index]);
@@ -1590,7 +1776,7 @@ namespace WLESS_CHRG_CTRL
             }
             return results;
         }
-        private void ScriptDelay_KeyDown(object sender, KeyEventArgs e)
+        private void ScriptLine_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Tab || sender is not DependencyObject source) return;
             DependencyObject current = source;
@@ -1599,9 +1785,60 @@ namespace WLESS_CHRG_CTRL
             else if (current == lvVehicleScript) InsertCommand(vehicleScriptCommands, lvVehicleScript);
             e.Handled = true;
         }
-        private static void Renumber(ObservableCollection<ScriptCommand> commands) { for (int i = 0; i < commands.Count; i++) commands[i].Position = i + 1; }
-        private static void RemoveCommand(ObservableCollection<ScriptCommand> commands, ListView list) { int i = list.SelectedIndex; if (i < 0) return; commands.RemoveAt(i); Renumber(commands); list.SelectedIndex = Math.Min(i, commands.Count - 1); }
-        private static void MoveCommand(ObservableCollection<ScriptCommand> commands, ListView list, int direction) { int i = list.SelectedIndex, target = i + direction; if (i < 0 || target < 0 || target >= commands.Count) return; commands.Move(i, target); Renumber(commands); list.SelectedIndex = target; }
+
+        private void ScriptLine_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (sender is not DependencyObject source) return;
+            DependencyObject current = source;
+            while (current != null && current is not ListView) current = VisualTreeHelper.GetParent(current);
+            if (current == lvStationScript)
+                ScheduleScriptColumnResize(lvStationScript, gvcStationScriptLine, stationScriptCommands);
+            else if (current == lvVehicleScript)
+                ScheduleScriptColumnResize(lvVehicleScript, gvcVehicleScriptLine, vehicleScriptCommands);
+        }
+
+        private void ScriptList_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (sender == lvStationScript)
+                ScheduleScriptColumnResize(lvStationScript, gvcStationScriptLine, stationScriptCommands);
+            else if (sender == lvVehicleScript)
+                ScheduleScriptColumnResize(lvVehicleScript, gvcVehicleScriptLine, vehicleScriptCommands);
+        }
+
+        private void ScheduleScriptColumnResize(ListView listView, GridViewColumn column,
+            IEnumerable<ScriptLine> lines)
+        {
+            uiDispatcher.BeginInvoke(DispatcherPriority.Background,
+                new Action(() => ResizeScriptColumn(listView, column, lines)));
+        }
+
+        private void ResizeScriptColumn(ListView listView, GridViewColumn column,
+            IEnumerable<ScriptLine> lines)
+        {
+            var typeface = new Typeface(new FontFamily("Consolas"), FontStyles.Normal,
+                FontWeights.Normal, FontStretches.Normal);
+            double contentWidth = 0;
+            foreach (ScriptLine line in lines)
+            {
+                var formattedText = new FormattedText(
+                    line.Text ?? string.Empty,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    typeface,
+                    FontSize,
+                    Brushes.Black,
+                    VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                contentWidth = Math.Max(contentWidth, formattedText.WidthIncludingTrailingWhitespace);
+            }
+
+            // 42 px Pos + 90 px Type + scrollbar/borders. Fill unused space, but
+            // retain the full text width so longer rows remain horizontally scrollable.
+            double availableWidth = Math.Max(0, listView.ActualWidth - 160);
+            column.Width = Math.Max(300, Math.Max(contentWidth + 28, availableWidth));
+        }
+        private static void Renumber(ObservableCollection<ScriptLine> commands) { for (int i = 0; i < commands.Count; i++) commands[i].Position = i + 1; }
+        private static void RemoveCommand(ObservableCollection<ScriptLine> commands, ListView list) { int i = list.SelectedIndex; if (i < 0) return; commands.RemoveAt(i); Renumber(commands); list.SelectedIndex = Math.Min(i, commands.Count - 1); }
+        private static void MoveCommand(ObservableCollection<ScriptLine> commands, ListView list, int direction) { int i = list.SelectedIndex, target = i + direction; if (i < 0 || target < 0 || target >= commands.Count) return; commands.Move(i, target); Renumber(commands); list.SelectedIndex = target; }
         private void StationRemoveCommand_Click(object s, RoutedEventArgs e) => RemoveCommand(stationScriptCommands, lvStationScript);
         private void VehicleRemoveCommand_Click(object s, RoutedEventArgs e) => RemoveCommand(vehicleScriptCommands, lvVehicleScript);
         private void StationMoveUp_Click(object s, RoutedEventArgs e) => MoveCommand(stationScriptCommands, lvStationScript, -1);
@@ -1610,19 +1847,13 @@ namespace WLESS_CHRG_CTRL
         private void VehicleMoveDown_Click(object s, RoutedEventArgs e) => MoveCommand(vehicleScriptCommands, lvVehicleScript, 1);
         private void ClearStationScript_Click(object s, RoutedEventArgs e) => stationScriptCommands.Clear();
         private void ClearVehicleScript_Click(object s, RoutedEventArgs e) => vehicleScriptCommands.Clear();
-        private void SaveStationScript_Click(object s, RoutedEventArgs e) => SaveScript(stationScriptCommands);
-        private void SaveVehicleScript_Click(object s, RoutedEventArgs e) => SaveScript(vehicleScriptCommands);
         private void Script_ContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
             if (sender is not ListView listView || listView.ContextMenu == null) return;
-            bool enabled = listView.Items.Count > 1;
             foreach (object item in listView.ContextMenu.Items)
-                if (item is MenuItem menuItem) menuItem.IsEnabled = enabled;
-        }
-        private static void SaveScript(ObservableCollection<ScriptCommand> commands)
-        {
-            var dialog = new SaveFileDialog { Filter = $"WLESS Command Script (*{Properties.Resources.ScriptFileExtension})|*{Properties.Resources.ScriptFileExtension}" };
-            if (dialog.ShowDialog() == true) File.WriteAllLines(dialog.FileName, GetScriptCommands(commands));
+                if (item is MenuItem menuItem)
+                    menuItem.IsEnabled = menuItem.Header?.ToString()?.StartsWith("Clear", StringComparison.Ordinal) != true ||
+                                         listView.Items.Count > 0;
         }
 
         private void LvMessages_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -1699,18 +1930,6 @@ namespace WLESS_CHRG_CTRL
             SaveMessagesToFile(vehicleMessages, "Vehicle");
         }
 
-        // ==================== MULTILINE DIALOG OPENING ====================
-
-        private void TxtStationCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            OpenCmdLinesDialog(spStation, txtStationScript, stationMessages);
-        }
-
-        private void TxtVehicleCommand_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-        {
-            OpenCmdLinesDialog(spVehicle, txtVehicleScript, vehicleMessages);
-        }
-
         // ==================== MAIN MENU ====================
 
         private void MenuSettings_Click(object sender, RoutedEventArgs e)
@@ -1748,30 +1967,132 @@ namespace WLESS_CHRG_CTRL
         }
 
 
-        // ==================== LOAD SCRIPT ====================
-
-        private void MenuLoadStationScript_Click(object sender, RoutedEventArgs e)
-        {
-            LoadScriptFromDialog(spStation, txtStationScript, stationMessages);
-        }
-
-        private void MenuLoadVehicleScript_Click(object sender, RoutedEventArgs e)
-        {
-            LoadScriptFromDialog(spVehicle, txtVehicleScript, vehicleMessages);
-        }
-
-        private void LoadScriptFromDialog(SerialPort port, TextBox associatedTextBox,
-            ObservableCollection<SerialMessage> messageCollection)
+        // ==================== XML SCRIPT LOAD / SAVE ====================
+        private void MenuLoadScript_Click(object sender, RoutedEventArgs e)
         {
             var openDialog = new OpenFileDialog
             {
                 Filter = $"WLESS Command Script (*{Properties.Resources.ScriptFileExtension})|*{Properties.Resources.ScriptFileExtension}|All files (*.*)|*.*",
-                Title = "Load Command Script"
+                Title = "Load WLESS Script"
             };
 
             if (openDialog.ShowDialog() == true)
+                LoadScriptDocument(openDialog.FileName);
+        }
+
+        private void MenuSaveScript_Click(object sender, RoutedEventArgs e)
+        {
+            if (!ValidateScript(stationScriptCommands, "Station", out int defaultDelay) ||
+                !ValidateScript(vehicleScriptCommands, "Vehicle", out _)) return;
+
+            string stationPort = cbStationPort.SelectedItem?.ToString() ?? stationScriptPort;
+            string vehiclePort = cbVehiclePort.SelectedItem?.ToString() ?? vehicleScriptPort;
+            if (string.IsNullOrWhiteSpace(stationPort) || string.IsNullOrWhiteSpace(vehiclePort))
             {
-                OpenCmdLinesDialog(port, associatedTextBox, messageCollection, openDialog.FileName);
+                MessageBox.Show("Select a serial port for both STATION and VEHICLE before saving.",
+                    "Cannot Save Script", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (string.Equals(stationPort, vehiclePort, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show("STATION and VEHICLE must use different serial ports.",
+                    "Cannot Save Script", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var saveDialog = new SaveFileDialog
+            {
+                Filter = $"WLESS Command Script (*{Properties.Resources.ScriptFileExtension})|*{Properties.Resources.ScriptFileExtension}",
+                Title = "Save WLESS Script",
+                AddExtension = true,
+                DefaultExt = Properties.Resources.ScriptFileExtension.TrimStart('.')
+            };
+            if (saveDialog.ShowDialog() != true) return;
+
+            try
+            {
+                new WlessScriptDocument
+                {
+                    FormatVersion = "1.0",
+                    DefaultCommandDelayMilliseconds = defaultDelay,
+                    StationSerialPort = stationPort,
+                    VehicleSerialPort = vehiclePort,
+                    StationLines = stationScriptCommands.Select(line => line.Text).ToList(),
+                    VehicleLines = vehicleScriptCommands.Select(line => line.Text).ToList()
+                }.Save(saveDialog.FileName);
+                stationScriptPort = stationPort;
+                vehicleScriptPort = vehiclePort;
+                txtStatus.Text = $"Script saved: {Path.GetFileName(saveDialog.FileName)}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Cannot save script:\n{ex.Message}", "Script Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private static void ReplaceScriptLines(ObservableCollection<ScriptLine> destination, IEnumerable<string> lines)
+        {
+            destination.Clear();
+            foreach (string line in lines)
+                destination.Add(new ScriptLine { Position = destination.Count + 1, Text = line });
+        }
+
+        private void LoadScriptDocument(string filePath)
+        {
+            try
+            {
+                WlessScriptDocument document = WlessScriptDocument.Load(filePath);
+                if (string.IsNullOrWhiteSpace(document.StationSerialPort) ||
+                    string.IsNullOrWhiteSpace(document.VehicleSerialPort))
+                    throw new InvalidDataException("Both script sections require a non-empty serialPort attribute.");
+                if (string.Equals(document.StationSerialPort, document.VehicleSerialPort, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("STATION and VEHICLE must use different serial ports.");
+
+                var availablePorts = new HashSet<string>(SerialPort.GetPortNames(), StringComparer.OrdinalIgnoreCase);
+                var missing = new[] { document.StationSerialPort, document.VehicleSerialPort }
+                    .Where(port => !availablePorts.Contains(port)).ToArray();
+                object? stationPortItem = cbStationPort.Items.Cast<object>().FirstOrDefault(item =>
+                    string.Equals(item.ToString(), document.StationSerialPort, StringComparison.OrdinalIgnoreCase));
+                object? vehiclePortItem = cbVehiclePort.Items.Cast<object>().FirstOrDefault(item =>
+                    string.Equals(item.ToString(), document.VehicleSerialPort, StringComparison.OrdinalIgnoreCase));
+                var warnings = new List<string>();
+                if (missing.Length > 0)
+                    warnings.Add($"Serial port(s) currently unavailable: {string.Join(", ", missing)}.");
+                if (availablePorts.Contains(document.StationSerialPort) && stationPortItem == null)
+                    warnings.Add($"Station port {document.StationSerialPort} is excluded by the application settings.");
+                if (availablePorts.Contains(document.VehicleSerialPort) && vehiclePortItem == null)
+                    warnings.Add($"Vehicle port {document.VehicleSerialPort} is excluded by the application settings.");
+                if (spStation.IsOpen && !string.Equals(spStation.PortName, document.StationSerialPort, StringComparison.OrdinalIgnoreCase))
+                    warnings.Add($"Station script declares {document.StationSerialPort}; connected port {spStation.PortName} will be used.");
+                if (spVehicle.IsOpen && !string.Equals(spVehicle.PortName, document.VehicleSerialPort, StringComparison.OrdinalIgnoreCase))
+                    warnings.Add($"Vehicle script declares {document.VehicleSerialPort}; connected port {spVehicle.PortName} will be used.");
+
+                // Apply only after the complete document has passed validation.
+                StopScript(stationScriptState);
+                StopScript(vehicleScriptState);
+                ReplaceScriptLines(stationScriptCommands, document.StationLines);
+                ReplaceScriptLines(vehicleScriptCommands, document.VehicleLines);
+                ScheduleScriptColumnResize(lvStationScript, gvcStationScriptLine, stationScriptCommands);
+                ScheduleScriptColumnResize(lvVehicleScript, gvcVehicleScriptLine, vehicleScriptCommands);
+                stationScriptPort = document.StationSerialPort;
+                vehicleScriptPort = document.VehicleSerialPort;
+                txtScriptDefaultDelay.Text = document.DefaultCommandDelayMilliseconds.ToString();
+                if (stationPortItem != null && !spStation.IsOpen) cbStationPort.SelectedItem = stationPortItem;
+                if (vehiclePortItem != null && !spVehicle.IsOpen) cbVehiclePort.SelectedItem = vehiclePortItem;
+                txtStatus.Text = $"Script loaded: {Path.GetFileName(filePath)}";
+                if (warnings.Count > 0)
+                {
+                    MessageBox.Show(
+                        "The script was loaded successfully.\n\n" + string.Join("\n", warnings) +
+                        "\n\nReview the port selection before running the corresponding sections.",
+                        "Script Loaded with Warnings", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Cannot load script:\n{ex.Message}", "Script Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -1793,7 +2114,7 @@ namespace WLESS_CHRG_CTRL
                 return;
             }
 
-            LoadScriptFile(filePath, stationScriptCommands);
+            LoadScriptDocument(filePath);
         }
 
         private void VehicleCommand_DragEnter(object sender, DragEventArgs e)
@@ -1812,18 +2133,7 @@ namespace WLESS_CHRG_CTRL
                 return;
             }
 
-            LoadScriptFile(filePath, vehicleScriptCommands);
-        }
-
-        private static void LoadScriptFile(string filePath, ObservableCollection<ScriptCommand> commands)
-        {
-            commands.Clear();
-            foreach (string line in File.ReadLines(filePath))
-            {
-                var (command, delay) = ExtractCmd(line);
-                if (!string.IsNullOrWhiteSpace(command))
-                    commands.Add(new ScriptCommand { Position = commands.Count + 1, Command = command, DelayOverrideMilliseconds = delay < 0 ? null : delay });
-            }
+            LoadScriptDocument(filePath);
         }
     }
 }

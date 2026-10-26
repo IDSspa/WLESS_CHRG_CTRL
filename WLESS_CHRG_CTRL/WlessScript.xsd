@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:simpleType name="FormatVersionType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="1.0" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="ScriptSectionType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="serialPort" type="xs:string" use="required" />
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:element name="WLESS_CHRG_SCRIPT">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="STATION" type="ScriptSectionType" />
+        <xs:element name="VEHICLE" type="ScriptSectionType" />
+      </xs:sequence>
+      <xs:attribute name="formatVersion" type="FormatVersionType" use="required" />
+      <xs:attribute name="defaultCommandDelayMs" type="xs:nonNegativeInteger" use="required" />
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

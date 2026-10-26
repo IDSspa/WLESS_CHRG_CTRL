@@ -4,7 +4,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:ports="clr-namespace:System.IO.Ports;assembly=System"
         Title="Settings" 
-        Height="650" Width="600"
+        Height="590" Width="600"
         MinHeight="590" MinWidth="540"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -32,8 +32,6 @@
             <!-- Serial config card -->
             <RowDefinition Height="Auto"/>
             <!-- Capture dump directory card -->
-            <RowDefinition Height="*"/>
-            <!-- Script execution card -->
             <RowDefinition Height="Auto"/>
             <!-- Info + spacer -->
             <RowDefinition Height="Auto"/>
@@ -180,19 +178,8 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="3" Style="{StaticResource CardBorder}" Margin="0,14,0,0">
-            <StackPanel>
-                <TextBlock Text="SCRIPT EXECUTION" Style="{StaticResource SectionCaption}" Margin="0,0,0,8"/>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Default delay between commands" VerticalAlignment="Center"/>
-                    <TextBox x:Name="txtDefaultCommandDelay" Width="70" Margin="12,0,4,0" HorizontalContentAlignment="Right"/>
-                    <TextBlock Text="ms" VerticalAlignment="Center"/>
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
         <!-- ============ Info ============ -->
-        <TextBlock Grid.Row="4"
+        <TextBlock Grid.Row="3"
                    Text="Serial settings apply to both ports. CAPD? and WPTCAPD? dumps are exported automatically."
                    Foreground="#888888" 
                    FontSize="11"
@@ -201,7 +188,7 @@
                    Margin="0,10,0,0"/>
 
         <!-- ============ Status ============ -->
-        <TextBlock Grid.Row="5"
+        <TextBlock Grid.Row="4"
                    x:Name="txtStatus"
                    Text=""
                    Foreground="SeaGreen"
@@ -209,7 +196,7 @@
                    Margin="0,4,0,0"/>
 
         <!-- ============ Buttons ============ -->
-        <StackPanel Grid.Row="6"
+        <StackPanel Grid.Row="5"
                     Orientation="Horizontal" 
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0">

@@ -41,7 +41,6 @@ namespace WLESS_CHRG_CTRL
             txtCaptureDumpDirectory.Text = string.IsNullOrWhiteSpace(settings.CaptureDumpDirectory)
                 ? DefaultCaptureDumpDirectory
                 : settings.CaptureDumpDirectory;
-            txtDefaultCommandDelay.Text = settings.DefaultCommandDelay.ToString();
 
             // Baud Rate
             string baudStr = settings.SerialBaudRate.ToString();
@@ -231,13 +230,6 @@ namespace WLESS_CHRG_CTRL
                 return false;
             }
 
-            if (!int.TryParse(txtDefaultCommandDelay.Text, out int defaultDelay) || defaultDelay < 0)
-            {
-                MessageBox.Show("Enter a valid default script delay.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
-                txtDefaultCommandDelay.Focus();
-                return false;
-            }
-
             // Apply to properties
             BannedPortsValue = string.Join(";", normalizedPorts);
             BaudRate = baudRate;
@@ -252,7 +244,6 @@ namespace WLESS_CHRG_CTRL
             Properties.Settings.Default.SerialParity = parity.ToString();
             Properties.Settings.Default.SerialStopBits = stopBits.ToString();
             Properties.Settings.Default.CaptureDumpDirectory = captureDumpDirectory;
-            Properties.Settings.Default.DefaultCommandDelay = defaultDelay;
 
             UpdateConfigDisplay();
             return true;
